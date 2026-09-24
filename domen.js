@@ -5,19 +5,52 @@
     var targetHost = 'lampa.run';
     var originalHost = 'lampa.mx';
 
-    // 1. ПРИЕМ СИГНАЛА НА ВОЗВРАТ
-    if (window.location.search.indexOf('reset_domain=1') !== -1) {
-        window.localStorage.removeItem('force_lampa_run');
+    // 1. ПРИЕМ ДАННЫХ (АККАУНТ И НАСТРОЙКИ) ПРИ ПЕРЕХОДЕ
+    var transferMatch = window.location.search.match(/transfer_data=([^&]+)/);
+    if (transferMatch) {
+        try {
+            // Расшифровываем данные и записываем в память нового домена
+            var decodedData = JSON.parse(decodeURIComponent(escape(atob(decodeURIComponent(transferMatch[1])))));
+            for (var key in decodedData) {
+                window.localStorage.setItem(key, decodedData[key]);
+            }
 
-        // Очищаем адресную строку
+            // Если мы вернулись на mx, сбрасываем флаг авто-перехода
+            if (window.location.search.indexOf('reset_domain=1') !== -1) {
+                window.localStorage.removeItem('force_lampa_run');
+            }
+
+            // Очищаем адресную строку и перезагружаем страницу для применения аккаунта
+            var cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
+            window.history.replaceState({path: cleanUrl}, '', cleanUrl);
+            window.location.reload();
+            return;
+        } catch(e) {}
+    }
+
+    // 2. ПРИЕМ СИГНАЛА НА ВОЗВРАТ (Резервный блок, если данные не передавались)
+    if (window.location.search.indexOf('reset_domain=1') !== -1 && !transferMatch) {
+        window.localStorage.removeItem('force_lampa_run');
         var cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
         window.history.replaceState({path: cleanUrl}, '', cleanUrl);
     }
 
-    // 2. АВТО-РЕДИРЕКТ
+    // 3. АВТО-РЕДИРЕКТ (Срабатывает только при обычных запусках)
     if (currentHost !== targetHost && window.localStorage.getItem('force_lampa_run') === 'true') {
         window.location.href = 'https://' + targetHost;
         return;
+    }
+
+    // Функция сбора и шифрования данных для переноса
+    function getTransferData() {
+        var keysToTransfer = ['account', 'lampa_settings', 'cub_profile', 'plugins'];
+        var transferData = {};
+        keysToTransfer.forEach(function(k) {
+            var val = window.localStorage.getItem(k);
+            if (val) transferData[k] = val;
+        });
+        // Кодируем в Base64 для безопасной передачи через URL
+        return encodeURIComponent(btoa(unescape(encodeURIComponent(JSON.stringify(transferData)))));
     }
 
     function init() {
@@ -49,67 +82,68 @@
             name: 'Домен'
         });
 
-        // 3. ОПРЕДЕЛЯЕМ КНОПКУ
-        if (currentHost !== targetHost) {
-            // МЫ НА LAMPA.MX
-            Lampa.SettingsApi.addParam({
-                component: 'custom_domain',
-                param: { name: 'switch_domain_run', type: 'button' },
-                field: {
-                    name: 'Переключить на lampa.run',
-                    description: 'Сейчас установлен: ' + currentHost
-                },
-                onChange: function () {
-                    Lampa.Modal.open({
-                        title: 'Смена домена',
-                        html: $('<div class="flat-domain-modal">Включить автоматический переход на <b>lampa.run</b>?</div>'),
-                        size: 'small',
-                        buttons: [
-                            {
-                                name: 'Отмена',
-                                onSelect: function () { Lampa.Modal.close(); }
-                            },
-                            {
-                                name: 'Включить',
-                                onSelect: function () {
+        var isRun = (currentHost === targetHost);
+
+        // Кнопка переключения с переносом данных
+        Lampa.SettingsApi.addParam({
+            component: 'custom_domain',
+            param: { name: 'switch_domain_btn', type: 'button' },
+            field: {
+                name: isRun ? 'Вернуться на lampa.mx' : 'Переключить на lampa.run',
+                description: 'Сейчас установлен: ' + currentHost
+            },
+            onChange: function () {
+                Lampa.Modal.open({
+                    title: isRun ? 'Возврат домена' : 'Смена домена',
+                    html: $('<div class="flat-domain-modal">' +
+                           (isRun ? 'Отключить авто-переход, вернуться на <b>lampa.mx</b> и перенести текущий аккаунт?' : 'Включить автоматический переход, сменить домен на <b>lampa.run</b> и перенести ваш аккаунт?')
+                           + '</div>'),
+                    size: 'small',
+                    buttons: [
+                        {
+                            name: 'Отмена',
+                            onSelect: function () { Lampa.Modal.close(); }
+                        },
+                        {
+                            name: isRun ? 'Вернуться' : 'Включить',
+                            onSelect: function () {
+                                var dataString = getTransferData();
+                                if (isRun) {
+                                    window.location.href = 'https://' + originalHost + '/?reset_domain=1&transfer_data=' + dataString;
+                                } else {
                                     window.localStorage.setItem('force_lampa_run', 'true');
-                                    window.location.href = 'https://' + targetHost;
+                                    window.location.href = 'https://' + targetHost + '/?transfer_data=' + dataString;
                                 }
                             }
-                        ]
-                    });
-                }
-            });
-        } else {
-            // МЫ НА LAMPA.RUN
-            Lampa.SettingsApi.addParam({
-                component: 'custom_domain',
-                param: { name: 'switch_domain_mx', type: 'button' },
-                field: {
-                    name: 'Вернуться на lampa.mx',
-                    description: 'Сейчас установлен: ' + currentHost
-                },
-                onChange: function () {
-                    Lampa.Modal.open({
-                        title: 'Возврат домена',
-                        html: $('<div class="flat-domain-modal">Отключить авто-переход и вернуться на <b>lampa.mx</b>?</div>'),
-                        size: 'small',
-                        buttons: [
-                            {
-                                name: 'Отмена',
-                                onSelect: function () { Lampa.Modal.close(); }
-                            },
-                            {
-                                name: 'Вернуться',
-                                onSelect: function () {
-                                    window.location.href = 'https://' + originalHost + '/?reset_domain=1';
-                                }
-                            }
-                        ]
-                    });
-                }
-            });
-        }
+                        }
+                    ]
+                });
+            }
+        });
+
+        // Кнопка сброса кэша
+        Lampa.SettingsApi.addParam({
+            component: 'custom_domain',
+            param: { name: 'clear_app_cache', type: 'button' },
+            field: {
+                name: 'Очистить кэш приложения',
+                description: 'Полезно, если после смены домена не грузятся постеры'
+            },
+            onChange: function () {
+                Lampa.Modal.open({
+                    title: 'Сброс кэша',
+                    html: $('<div class="flat-domain-modal">Вы уверены? Это очистит временные файлы. Ваши настройки и аккаунт сохранятся.</div>'),
+                    size: 'small',
+                    buttons: [
+                        { name: 'Отмена', onSelect: function () { Lampa.Modal.close(); } },
+                        { name: 'Сбросить', onSelect: function () {
+                            window.localStorage.removeItem('lampa_cache');
+                            window.location.reload();
+                        }}
+                    ]
+                });
+            }
+        });
     }
 
     if (window.appready) {
@@ -119,4 +153,14 @@
             if (e.type == 'ready') init();
         });
     }
+
+    // Поднимаем раздел "Домен" в самый верх меню настроек
+    Lampa.Settings.listener.follow('open', function (e) {
+        if (e.name === 'main') {
+            var domainItem = e.body.find('[data-component="custom_domain"]');
+            if (domainItem.length) {
+                domainItem.prependTo(domainItem.parent());
+            }
+        }
+    });
 })();
