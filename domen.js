@@ -92,7 +92,7 @@
             clearTimeout(timer);
             // Домен доступен! Запоминаем и переходим
             window.localStorage.setItem('force_lampa_run', 'true');
-            window.location.href = 'https://' + targetHost;
+            window.location.href = 'http://' + targetHost;
         };
 
         img.onerror = function() {
@@ -100,7 +100,7 @@
         };
 
         // Запрашиваем файл с целевого домена
-        img.src = 'https://' + targetHost + '/favicon.ico?_=' + Date.now();
+        img.src = 'http://' + targetHost + '/favicon.ico?_=' + Date.now();
     }
 
     // 1. ПРИЕМ СИГНАЛА НА ВОЗВРАТ
@@ -152,7 +152,7 @@
                             onSelect: function () {
                                 if (isRun) {
                                     // Возврат (проверять mx не нужно, это родной домен виджета)
-                                    window.location.href = 'https://' + originalHost + '/?reset_domain=1';
+                                    window.location.href = 'http://' + originalHost + '/?reset_domain=1';
                                 } else {
                                     Lampa.Modal.close();
                                     // Запускаем проверку перед переходом
