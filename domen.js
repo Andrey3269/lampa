@@ -55,7 +55,7 @@
                         {
                             name: 'Переключить',
                             onSelect: function () {
-                                window.location.href = 'https://lampa.run';
+                                window.location.href = 'http://lampa.run';
                             }
                         }
                     ]
