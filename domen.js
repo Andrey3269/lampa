@@ -32,45 +32,20 @@
     `;
     document.head.appendChild(style);
 
-    // Функция показа окна при ошибке проверки (с возможностью принудительного перехода)
-    function showFailModal() {
-        // Ждем, пока Lampa полностью загрузится, чтобы контроллер пульта не завис
-        var waitLampa = setInterval(function() {
-            if (window.appready && window.Lampa && window.Lampa.Modal) {
-                clearInterval(waitLampa);
-
-                // Закрываем любые текущие окна и даем паузу 300мс, чтобы Lampa освободила контроллер
-                Lampa.Modal.close();
-                setTimeout(function() {
-                    Lampa.Modal.open({
-                        title: 'Внимание',
-                        html: $('<div class="flat-domain-modal">Не удалось автоматически проверить <b>' + targetHost + '</b>.<br><br>Возможно, телевизор заблокировал фоновую проверку, но сайт работает.<br><br>Что сделать?</div>'),
-                        size: 'small',
-                        buttons: [
-                            {
-                                name: 'Отмена (Остаться тут)',
-                                onSelect: function () {
-                                    window.localStorage.removeItem('force_lampa_run');
-                                    Lampa.Modal.close();
-                                }
-                            },
-                            {
-                                name: 'Перейти принудительно',
-                                onSelect: function () {
-                                    window.localStorage.setItem('force_lampa_run', 'true');
-                                    window.location.href = 'http://' + targetHost;
-                                }
-                            }
-                        ]
-                    });
-                }, 300);
+    // Универсальная функция для безопасного закрытия окна и возврата фокуса пульту/клавиатуре
+    function closeAndRestore(controllerName) {
+        Lampa.Modal.close();
+        setTimeout(function() {
+            if (window.Lampa && window.Lampa.Controller) {
+                Lampa.Controller.toggle(controllerName || 'settings');
             }
-        }, 500);
+        }, 50); // Минимальная задержка для того, чтобы Lampa успела очистить DOM
     }
 
     // Главная функция проверки домена и редиректа
     function checkAndRedirect(isAuto) {
         var loader = null;
+        var prevController = (window.Lampa && window.Lampa.Controller && Lampa.Controller.enabled()) ? Lampa.Controller.enabled().name : 'settings';
 
         if (isAuto) {
             loader = document.createElement('div');
@@ -82,23 +57,53 @@
                 title: 'Проверка...',
                 html: $('<div class="flat-domain-modal">Проверяем доступность <b>' + targetHost + '</b>... Пожалуйста, подождите.</div>'),
                 size: 'small',
+                onBack: function() { closeAndRestore(prevController); }, // Позволяет прервать проверку кнопкой Назад/Esc
                 buttons: []
             });
         }
 
         var img = new Image();
-        // Даем 4 секунды на попытку
         var timer = setTimeout(function() {
             img.src = '';
             handleFail();
-        }, 4000);
+        }, 4000); // Даем 4 секунды на попытку
 
         function handleFail() {
             clearTimeout(timer);
             if (isAuto && loader && loader.parentNode) {
                 loader.parentNode.removeChild(loader);
             }
-            showFailModal();
+
+            // Если домен не ответил, показываем окно с выбором
+            var waitLampa = setInterval(function() {
+                if (window.appready && window.Lampa && window.Lampa.Modal && window.Lampa.Controller) {
+                    clearInterval(waitLampa);
+                    var fallbackController = isAuto ? 'main' : 'settings';
+
+                    Lampa.Modal.open({
+                        title: 'Внимание',
+                        html: $('<div class="flat-domain-modal">Не удалось автоматически проверить <b>' + targetHost + '</b>.<br><br>Возможно, телевизор заблокировал фоновую проверку, но сайт работает.<br><br>Что сделать?</div>'),
+                        size: 'small',
+                        onBack: function() { closeAndRestore(fallbackController); }, // ЖЕЛЕЗНАЯ ЗАЩИТА ESCAPE / НАЗАД
+                        buttons: [
+                            {
+                                name: 'Отмена (Остаться тут)',
+                                onSelect: function () {
+                                    window.localStorage.removeItem('force_lampa_run');
+                                    closeAndRestore(fallbackController);
+                                }
+                            },
+                            {
+                                name: 'Перейти принудительно',
+                                onSelect: function () {
+                                    window.localStorage.setItem('force_lampa_run', 'true');
+                                    window.location.href = 'http://' + targetHost;
+                                }
+                            }
+                        ]
+                    });
+                }
+            }, 500);
         }
 
         img.onload = function() {
@@ -111,7 +116,7 @@
             handleFail();
         };
 
-        // Запрашиваем файл логотипа, который 100% есть в любой сборке Lampa
+        // Ищем файл логотипа, который 100% есть в Lampa
         img.src = 'http://' + targetHost + '/img/logo.svg?_=' + Date.now();
     }
 
@@ -131,7 +136,7 @@
         // Создаем раздел "Домен"
         Lampa.SettingsApi.addComponent({
             component: 'custom_domain',
-            icon: '<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>',
+            icon: '<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>',
             name: 'Домен'
         });
 
@@ -146,29 +151,28 @@
                 description: 'Сейчас установлен: ' + currentHost
             },
             onChange: function () {
+                var prevController = (window.Lampa && window.Lampa.Controller && Lampa.Controller.enabled()) ? Lampa.Controller.enabled().name : 'settings';
+
                 Lampa.Modal.open({
                     title: isRun ? 'Возврат домена' : 'Смена домена',
                     html: $('<div class="flat-domain-modal">' +
                            (isRun ? 'Отключить авто-переход и вернуться на <b>lampa.mx</b>?' : 'Включить автоматический переход и сменить домен на <b>lampa.run</b>?')
                            + '</div>'),
                     size: 'small',
+                    onBack: function() { closeAndRestore(prevController); }, // ЖЕЛЕЗНАЯ ЗАЩИТА ESCAPE / НАЗАД
                     buttons: [
                         {
                             name: 'Отмена',
-                            onSelect: function () { Lampa.Modal.close(); }
+                            onSelect: function () { closeAndRestore(prevController); }
                         },
                         {
                             name: isRun ? 'Вернуться' : 'Включить',
                             onSelect: function () {
-                                Lampa.Modal.close();
-                                // Даем время закрыться окну, чтобы не завис контроллер
-                                setTimeout(function() {
-                                    if (isRun) {
-                                        window.location.href = 'http://' + originalHost + '/?reset_domain=1';
-                                    } else {
-                                        checkAndRedirect(false);
-                                    }
-                                }, 300);
+                                if (isRun) {
+                                    window.location.href = 'http://' + originalHost + '/?reset_domain=1';
+                                } else {
+                                    checkAndRedirect(false);
+                                }
                             }
                         }
                     ]
@@ -185,12 +189,15 @@
                 description: 'Полезно, если после смены домена не грузятся постеры'
             },
             onChange: function () {
+                var prevController = (window.Lampa && window.Lampa.Controller && Lampa.Controller.enabled()) ? Lampa.Controller.enabled().name : 'settings';
+
                 Lampa.Modal.open({
                     title: 'Сброс кэша',
                     html: $('<div class="flat-domain-modal">Вы уверены? Это очистит временные файлы. Ваши настройки и аккаунт сохранятся.</div>'),
                     size: 'small',
+                    onBack: function() { closeAndRestore(prevController); }, // ЖЕЛЕЗНАЯ ЗАЩИТА ESCAPE / НАЗАД
                     buttons: [
-                        { name: 'Отмена', onSelect: function () { Lampa.Modal.close(); } },
+                        { name: 'Отмена', onSelect: function () { closeAndRestore(prevController); } },
                         { name: 'Сбросить', onSelect: function () {
                             window.localStorage.removeItem('lampa_cache');
                             window.location.reload();
