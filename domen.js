@@ -2,7 +2,7 @@
     'use strict';
 
     function init() {
-        // Добавляем строгий плоский стиль для модального окна
+        // Жесткий плоский стиль без glassmorphism
         var style = document.createElement('style');
         style.innerHTML = `
             .flat-domain-modal {
@@ -11,7 +11,6 @@
                 border-radius: 0px !important;
                 padding: 20px;
                 text-align: center;
-                /* НИКАКОГО glassmorphism и glow */
                 backdrop-filter: none !important;
                 -webkit-backdrop-filter: none !important;
                 box-shadow: none !important;
@@ -24,15 +23,22 @@
         `;
         document.head.appendChild(style);
 
-        // Добавляем кнопку в раздел "Остальное" (rest)
+        // 1. Создаем отдельный раздел в левом меню настроек
+        Lampa.SettingsApi.addComponent({
+            component: 'custom_domain',
+            icon: '<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>',
+            name: 'Домен'
+        });
+
+        // 2. Добавляем кнопку переключения в наш новый раздел
         Lampa.SettingsApi.addParam({
-            component: 'rest',
+            component: 'custom_domain',
             param: {
                 name: 'switch_domain_run',
                 type: 'button'
             },
             field: {
-                name: 'Переключить домен на lampa.run'
+                name: 'Переключить на lampa.run'
             },
             onChange: function () {
                 Lampa.Modal.open({
@@ -49,7 +55,6 @@
                         {
                             name: 'Переключить',
                             onSelect: function () {
-                                // Для Tizen-виджетов это обновит текущий хост
                                 window.location.href = 'https://lampa.run';
                             }
                         }
