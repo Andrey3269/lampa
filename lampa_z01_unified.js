@@ -4,14 +4,14 @@
   if (window.lampa_z01_unified_v1) return;
   window.lampa_z01_unified_v1 = true;
 
-  var VERSION = '1.1.2';
+  var VERSION = '1.1.3';
   var HOST = 'http://z01.online/';
 
   function safe(fn) {
     try { return fn(); } catch (e) { return null; }
   }
 
-  // 1. Блокируем отображение через CSS (Торренты + Трейлеры + Реклама CUB)
+  // 1. Блокируем отображение через CSS
   function injectCSS() {
     if (document.getElementById('lampa_z01_hide_css')) return;
     var style = document.createElement('style');
@@ -24,9 +24,10 @@
       [data-action="torrent"], [data-action="torrents"], [data-type="torrent"], [data-type="torrents"],
       .button--torrent,
       .full-start__button[data-subtitle*="торрент"], .full-start__button[data-subtitle*="Torrent"],
-      /* Реклама, подписки и баннеры CUB */
+      /* Реклама, прероллы, подписки и баннеры CUB */
       .cub-box, .notice--cub, .cub-premium, .ad-server, .button--subscribe,
-      .black-friday__button, .womens_day__button, .christmas__button {
+      .black-friday__button, .womens_day__button, .christmas__button,
+      .ad-preroll, .ad-preroll__bg {
         display: none !important;
       }
     `;
@@ -43,7 +44,7 @@
       '.view--torrent', '.view--torrents', '.torrent-view', '.torrent-view-button', '.torrent-button',
       '[data-action="torrent"]', '[data-action="torrents"]', '[data-type="torrent"]', '[data-type="torrents"]',
       '.button--torrent', '.full-start__button[data-subtitle*="торрент"]', '.full-start__button[data-subtitle*="Torrent"]',
-      '.ad-server', '.button--subscribe'
+      '.ad-server', '.button--subscribe', '.ad-preroll', '.ad-preroll__bg'
     ];
 
     // Удаление по классам
@@ -58,17 +59,14 @@
 
     // Умное удаление по тексту (Торренты + CUB Premium)
     safe(function () {
-      // Ищем среди кнопок, разделов настроек и уведомлений
       var elements = scope.querySelectorAll('.full-start__button, .selector, .settings-folder, .notice');
       for (var i = 0; i < elements.length; i++) {
         var text = (elements[i].textContent || '').replace(/\s+/g, ' ').trim().toLowerCase();
 
-        // Удаляем кнопки торрентов
         if (text === 'торренты' || text === 'torrents' || text === 'torrent') {
           elements[i].remove();
         }
 
-        // Удаляем любые блоки, упоминающие CUB Premium
         if (text.indexOf('cub premium') !== -1 || text.indexOf('cub премиум') !== -1) {
           elements[i].remove();
         }
@@ -153,7 +151,7 @@
     loadZ01();
     disableTorrentSetting();
 
-    // Дополнительная зачистка при старте приложения (для стартовых уведомлений CUB)
+    // Дополнительная зачистка при старте приложения (для стартовых уведомлений и прероллов CUB)
     setTimeout(function() { removeUnwantedUI(document); }, 500);
     setTimeout(function() { removeUnwantedUI(document); }, 2000);
   }
