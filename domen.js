@@ -1,18 +1,28 @@
 (function () {
     'use strict';
 
-    // 1. Настройки доменов
     var currentHost = window.location.hostname;
     var targetHost = 'lampa.run';
+    var originalHost = 'lampa.mx';
 
-    // 2. АВТО-РЕДИРЕКТ: Если мы на старом домене, но ранее нажали "переключить навсегда"
+    // 1. ПРИЕМ СИГНАЛА НА ВОЗВРАТ: Если мы вернулись с lampa.run
+    if (window.location.search.indexOf('reset_domain=1') !== -1) {
+        // Стираем настройку авто-редиректа навсегда
+        window.localStorage.removeItem('force_lampa_run');
+
+        // Очищаем адресную строку от ключа reset_domain, чтобы было красиво
+        var cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
+        window.history.replaceState({path: cleanUrl}, '', cleanUrl);
+    }
+
+    // 2. АВТО-РЕДИРЕКТ: Если включен, и мы сейчас не на lampa.run
     if (currentHost !== targetHost && window.localStorage.getItem('force_lampa_run') === 'true') {
-        window.location.href = 'http://' + targetHost;
-        return; // Останавливаем дальнейшую загрузку старого домена
+        window.location.href = 'https://' + targetHost;
+        return; // Останавливаем загрузку текущей страницы
     }
 
     function init() {
-        // Строгий плоский UI
+        // Жесткий плоский UI
         var style = document.createElement('style');
         style.innerHTML = `
             .flat-domain-modal {
@@ -40,8 +50,9 @@
             name: 'Домен'
         });
 
-        // Кнопка включения авто-редиректа
+        // 3. ОПРЕДЕЛЯЕМ, КАКУЮ КНОПКУ ПОКАЗЫВАТЬ
         if (currentHost !== targetHost) {
+            // МЫ НА LAMPA.MX — Показываем кнопку перехода на RUN
             Lampa.SettingsApi.addParam({
                 component: 'custom_domain',
                 param: { name: 'switch_domain_run', type: 'button' },
@@ -49,7 +60,7 @@
                 onChange: function () {
                     Lampa.Modal.open({
                         title: 'Смена домена',
-                        html: $('<div class="flat-domain-modal">Включить автоматический переход на <b>lampa.run</b>?<br><br><small style="color:#aaa;">При каждом входе ТВ будет сам переключать вас на новый адрес.</small></div>'),
+                        html: $('<div class="flat-domain-modal">Включить автоматический переход на <b>lampa.run</b>?</div>'),
                         size: 'small',
                         buttons: [
                             {
@@ -59,9 +70,35 @@
                             {
                                 name: 'Включить',
                                 onSelect: function () {
-                                    // Записываем флаг в память телевизора НАВСЕГДА
                                     window.localStorage.setItem('force_lampa_run', 'true');
-                                    window.location.href = 'http://' + targetHost;
+                                    window.location.href = 'https://' + targetHost;
+                                }
+                            }
+                        ]
+                    });
+                }
+            });
+        } else {
+            // МЫ НА LAMPA.RUN — Показываем кнопку возврата на MX
+            Lampa.SettingsApi.addParam({
+                component: 'custom_domain',
+                param: { name: 'switch_domain_mx', type: 'button' },
+                field: { name: 'Вернуться на lampa.mx' },
+                onChange: function () {
+                    Lampa.Modal.open({
+                        title: 'Возврат домена',
+                        html: $('<div class="flat-domain-modal">Отключить авто-переход и вернуться на <b>lampa.mx</b>?</div>'),
+                        size: 'small',
+                        buttons: [
+                            {
+                                name: 'Отмена',
+                                onSelect: function () { Lampa.Modal.close(); }
+                            },
+                            {
+                                name: 'Вернуться',
+                                onSelect: function () {
+                                    // Отправляем обратно на mx со специальным ключом сброса
+                                    window.location.href = 'https://' + originalHost + '/?reset_domain=1';
                                 }
                             }
                         ]
