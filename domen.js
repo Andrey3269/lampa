@@ -37,7 +37,7 @@
 
     // 3. АВТО-РЕДИРЕКТ (Срабатывает только при обычных запусках)
     if (currentHost !== targetHost && window.localStorage.getItem('force_lampa_run') === 'true') {
-        window.location.href = 'https://' + targetHost;
+        window.location.href = 'http://' + targetHost;
         return;
     }
 
@@ -109,10 +109,10 @@
                             onSelect: function () {
                                 var dataString = getTransferData();
                                 if (isRun) {
-                                    window.location.href = 'https://' + originalHost + '/?reset_domain=1&transfer_data=' + dataString;
+                                    window.location.href = 'http://' + originalHost + '/?reset_domain=1&transfer_data=' + dataString;
                                 } else {
                                     window.localStorage.setItem('force_lampa_run', 'true');
-                                    window.location.href = 'https://' + targetHost + '/?transfer_data=' + dataString;
+                                    window.location.href = 'http://' + targetHost + '/?transfer_data=' + dataString;
                                 }
                             }
                         }
