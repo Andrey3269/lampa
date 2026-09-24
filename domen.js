@@ -11,20 +11,25 @@
     // Плоский стиль окон + иконки в пунктах настроек
     var style = document.createElement('style');
     style.innerHTML = `
+        /* Текст внутри штатного окна Lampa: без своего фона и рамки,
+           чтобы не получалась тёмная «коробка» в окне */
         .flat-domain-modal {
-            background: #141414 !important;
-            border: 1px solid #333 !important;
-            border-radius: 0px !important;
-            padding: 20px;
+            background: transparent;
+            border: none;
+            box-shadow: none;
+            padding: 0 0 .4em;
             text-align: center;
-            backdrop-filter: none !important;
-            -webkit-backdrop-filter: none !important;
-            box-shadow: none !important;
-            text-shadow: none !important;
+            line-height: 1.5;
+            font-size: 1.15em;
         }
-        .flat-domain-modal .modal__title,
-        .flat-domain-modal .modal__body {
-            background: transparent !important;
+        .flat-domain-modal b {
+            color: #fff;
+            white-space: nowrap;
+        }
+        .flat-domain-modal .flat-domain-hint {
+            margin-top: .7em;
+            font-size: .8em;
+            color: rgba(255, 255, 255, .5);
         }
         .domain-param-icon {
             width: 1.3em;
@@ -85,7 +90,9 @@
         Lampa.Modal.open({
             title: isRun ? 'Возврат домена' : 'Смена домена',
             html: $('<div class="flat-domain-modal">' +
-                   (isRun ? 'Отключить авто-переход и вернуться на <b>' + originalHost + '</b>?' : 'Включить автоматический переход и сменить домен на <b>' + targetHost + '</b>?')
+                   (isRun
+                       ? 'Вернуться на <b>' + originalHost + '</b>?<div class="flat-domain-hint">Автоматический переход на ' + targetHost + ' будет отключён</div>'
+                       : 'Перейти на <b>' + targetHost + '</b>?<div class="flat-domain-hint">При запуске приложение будет открываться на этом домене</div>')
                    + '</div>'),
             size: 'small',
             onBack: function () { closeAndRestore(prevController); },
@@ -169,7 +176,7 @@
 
                 Lampa.Modal.open({
                     title: 'Сброс кэша',
-                    html: $('<div class="flat-domain-modal">Вы уверены? Это очистит временные файлы. Ваши настройки и аккаунт сохранятся.</div>'),
+                    html: $('<div class="flat-domain-modal">Очистить кэш приложения?<div class="flat-domain-hint">Настройки и аккаунт сохранятся</div></div>'),
                     size: 'small',
                     onBack: function () { closeAndRestore(prevController); },
                     buttons: [
