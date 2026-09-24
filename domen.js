@@ -5,76 +5,119 @@
     var targetHost = 'lampa.run';
     var originalHost = 'lampa.mx';
 
-    // 1. ПРИЕМ ДАННЫХ (АККАУНТ И НАСТРОЙКИ) ПРИ ПЕРЕХОДЕ
-    var transferMatch = window.location.search.match(/transfer_data=([^&]+)/);
-    if (transferMatch) {
-        try {
-            // Расшифровываем данные и записываем в память нового домена
-            var decodedData = JSON.parse(decodeURIComponent(escape(atob(decodeURIComponent(transferMatch[1])))));
-            for (var key in decodedData) {
-                window.localStorage.setItem(key, decodedData[key]);
-            }
+    // Внедряем строгий плоский стиль (никакого glassmorphism и glow)
+    var style = document.createElement('style');
+    style.innerHTML = `
+        .flat-domain-modal {
+            background: #141414 !important;
+            border: 1px solid #333 !important;
+            border-radius: 0px !important;
+            padding: 20px;
+            text-align: center;
+            backdrop-filter: none !important;
+            -webkit-backdrop-filter: none !important;
+            box-shadow: none !important;
+            text-shadow: none !important;
+        }
+        .flat-domain-modal .modal__title,
+        .flat-domain-modal .modal__body {
+            background: transparent !important;
+        }
+        .flat-loader-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: #141414; z-index: 99999;
+            display: flex; align-items: center; justify-content: center;
+            color: #fff; font-size: 1.5em; font-family: sans-serif; text-align: center;
+        }
+    `;
+    document.head.appendChild(style);
 
-            // Если мы вернулись на mx, сбрасываем флаг авто-перехода
-            if (window.location.search.indexOf('reset_domain=1') !== -1) {
-                window.localStorage.removeItem('force_lampa_run');
+    // Функция показа ошибки, если домен не загрузился
+    function showFailModal() {
+        var waitLampa = setInterval(function() {
+            if (window.appready && window.Lampa && window.Lampa.Modal) {
+                clearInterval(waitLampa);
+                Lampa.Modal.open({
+                    title: 'Ошибка подключения',
+                    html: $('<div class="flat-domain-modal">Не удалось подключиться к домену <b>' + targetHost + '</b>.<br><br>Возможно, он заблокирован провайдером или временно недоступен.<br><br>Авто-переход отключен. Вы возвращены на стандартный <b>' + originalHost + '</b>.</div>'),
+                    size: 'small',
+                    buttons: [
+                        { name: 'Понятно', onSelect: function () { Lampa.Modal.close(); } }
+                    ]
+                });
             }
-
-            // Очищаем адресную строку и перезагружаем страницу для применения аккаунта
-            var cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
-            window.history.replaceState({path: cleanUrl}, '', cleanUrl);
-            window.location.reload();
-            return;
-        } catch(e) {}
+        }, 500);
     }
 
-    // 2. ПРИЕМ СИГНАЛА НА ВОЗВРАТ (Резервный блок, если данные не передавались)
-    if (window.location.search.indexOf('reset_domain=1') !== -1 && !transferMatch) {
+    // Главная функция проверки домена и редиректа
+    function checkAndRedirect(isAuto) {
+        var loader = null;
+
+        if (isAuto) {
+            // Если это авто-запуск, делаем темный экран загрузки
+            loader = document.createElement('div');
+            loader.className = 'flat-loader-overlay';
+            loader.innerHTML = 'Проверка доступности ' + targetHost + '...';
+            document.documentElement.appendChild(loader);
+        } else {
+            // Если ручное нажатие — показываем окно без кнопок
+            Lampa.Modal.open({
+                title: 'Проверка...',
+                html: $('<div class="flat-domain-modal">Проверяем доступность <b>' + targetHost + '</b>... Пожалуйста, подождите.</div>'),
+                size: 'small',
+                buttons: []
+            });
+        }
+
+        // Проверяем доступность домена, пытаясь загрузить иконку (работает обходя CORS)
+        var img = new Image();
+        var timer = setTimeout(function() {
+            img.src = '';
+            handleFail();
+        }, 5000); // 5 секунд на попытку
+
+        function handleFail() {
+            clearTimeout(timer);
+            window.localStorage.removeItem('force_lampa_run'); // Стираем команду на авто-переход
+
+            if (isAuto) {
+                if (loader && loader.parentNode) loader.parentNode.removeChild(loader);
+            } else {
+                Lampa.Modal.close();
+            }
+            showFailModal(); // Показываем окно об ошибке
+        }
+
+        img.onload = function() {
+            clearTimeout(timer);
+            // Домен доступен! Запоминаем и переходим
+            window.localStorage.setItem('force_lampa_run', 'true');
+            window.location.href = 'http://' + targetHost;
+        };
+
+        img.onerror = function() {
+            handleFail(); // Ошибка загрузки = домен заблокирован
+        };
+
+        // Запрашиваем файл с целевого домена
+        img.src = 'http://' + targetHost + '/favicon.ico?_=' + Date.now();
+    }
+
+    // 1. ПРИЕМ СИГНАЛА НА ВОЗВРАТ
+    if (window.location.search.indexOf('reset_domain=1') !== -1) {
         window.localStorage.removeItem('force_lampa_run');
         var cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
         window.history.replaceState({path: cleanUrl}, '', cleanUrl);
     }
 
-    // 3. АВТО-РЕДИРЕКТ (Срабатывает только при обычных запусках)
+    // 2. АВТО-РЕДИРЕКТ (С ПРОВЕРКОЙ)
     if (currentHost !== targetHost && window.localStorage.getItem('force_lampa_run') === 'true') {
-        window.location.href = 'http://' + targetHost;
-        return;
-    }
-
-    // Функция сбора и шифрования данных для переноса
-    function getTransferData() {
-        var keysToTransfer = ['account', 'lampa_settings', 'cub_profile', 'plugins'];
-        var transferData = {};
-        keysToTransfer.forEach(function(k) {
-            var val = window.localStorage.getItem(k);
-            if (val) transferData[k] = val;
-        });
-        // Кодируем в Base64 для безопасной передачи через URL
-        return encodeURIComponent(btoa(unescape(encodeURIComponent(JSON.stringify(transferData)))));
+        checkAndRedirect(true);
+        // Не используем return, чтобы Lampa загрузилась на фоне (под черным экраном)
+        // Если проверка провалится, мы просто уберем черный экран, и вы останетесь в рабочей Lampa
     }
 
     function init() {
-        // Жесткий плоский UI
-        var style = document.createElement('style');
-        style.innerHTML = `
-            .flat-domain-modal {
-                background: #141414 !important;
-                border: 1px solid #333 !important;
-                border-radius: 0px !important;
-                padding: 20px;
-                text-align: center;
-                backdrop-filter: none !important;
-                -webkit-backdrop-filter: none !important;
-                box-shadow: none !important;
-                text-shadow: none !important;
-            }
-            .flat-domain-modal .modal__title,
-            .flat-domain-modal .modal__body {
-                background: transparent !important;
-            }
-        `;
-        document.head.appendChild(style);
-
         // Создаем раздел "Домен"
         Lampa.SettingsApi.addComponent({
             component: 'custom_domain',
@@ -84,7 +127,7 @@
 
         var isRun = (currentHost === targetHost);
 
-        // Кнопка переключения с переносом данных
+        // Кнопка переключения
         Lampa.SettingsApi.addParam({
             component: 'custom_domain',
             param: { name: 'switch_domain_btn', type: 'button' },
@@ -96,7 +139,7 @@
                 Lampa.Modal.open({
                     title: isRun ? 'Возврат домена' : 'Смена домена',
                     html: $('<div class="flat-domain-modal">' +
-                           (isRun ? 'Отключить авто-переход, вернуться на <b>lampa.mx</b> и перенести текущий аккаунт?' : 'Включить автоматический переход, сменить домен на <b>lampa.run</b> и перенести ваш аккаунт?')
+                           (isRun ? 'Отключить авто-переход и вернуться на <b>lampa.mx</b>?' : 'Включить автоматический переход и сменить домен на <b>lampa.run</b>?')
                            + '</div>'),
                     size: 'small',
                     buttons: [
@@ -107,12 +150,13 @@
                         {
                             name: isRun ? 'Вернуться' : 'Включить',
                             onSelect: function () {
-                                var dataString = getTransferData();
                                 if (isRun) {
-                                    window.location.href = 'http://' + originalHost + '/?reset_domain=1&transfer_data=' + dataString;
+                                    // Возврат (проверять mx не нужно, это родной домен виджета)
+                                    window.location.href = 'http://' + originalHost + '/?reset_domain=1';
                                 } else {
-                                    window.localStorage.setItem('force_lampa_run', 'true');
-                                    window.location.href = 'http://' + targetHost + '/?transfer_data=' + dataString;
+                                    Lampa.Modal.close();
+                                    // Запускаем проверку перед переходом
+                                    setTimeout(function() { checkAndRedirect(false); }, 100);
                                 }
                             }
                         }
@@ -154,7 +198,7 @@
         });
     }
 
-    // Поднимаем раздел "Домен" в самый верх меню настроек
+    // Поднимаем раздел "Домен" в самый верх меню настроек (перед Синхронизацией)
     Lampa.Settings.listener.follow('open', function (e) {
         if (e.name === 'main') {
             var domainItem = e.body.find('[data-component="custom_domain"]');
