@@ -74,6 +74,11 @@
             border-color: #666;
             background: #1c1c1c;
         }
+        /* Фокус от пульта (Lampa вешает класс .focus) — заметнее, чем hover мышью */
+        .lampa-fab-btn.focus {
+            border-color: #fff;
+            background: #262626;
+        }
         /* Рядом с иконкой настроек (верх, справа) */
         .lampa-fab-domain { right: 70px; }
         /* Кнопка перезагрузки страницы — сверху слева */
@@ -255,31 +260,105 @@
         });
     }
 
+    // ===== Управление пультом (D-pad) для плавающих кнопок =====
+    // Свой контроллер Lampa: влево/вправо — между кнопками, Enter — действие,
+    // вниз/Назад — возврат в шапку. Попасть на кнопки можно стрелкой ВВЕРХ,
+    // когда фокус в шапке Lampa (там же поиск и настройки).
+    var FAB_CTRL = 'fab_domain';   // имя нашего контроллера
+    var HEAD_CTRL = 'head';        // имя контроллера шапки Lampa
+    var fabLastFocus = null;       // последняя кнопка с фокусом
+    var fabReturnTo = HEAD_CTRL;   // куда вернуть управление при выходе
+    var fabLastFire = 0;
+    var fabKeysBound = false;
+
+    // Защита от двойного срабатывания: клик мышью и hover:enter от пульта
+    // могут прийти оба — действие должно выполниться один раз.
+    function fabFire(action) {
+        var now = Date.now();
+        if (now - fabLastFire < 400) return;
+        fabLastFire = now;
+        action();
+    }
+
+    function bindFab(btn, action) {
+        $(btn).on('click hover:enter', function (e) {
+            e.stopPropagation();
+            fabFire(action);
+        }).on('hover:focus', function () {
+            fabLastFocus = this;
+        });
+    }
+
+    function fabEnter() {
+        var cur = (window.Lampa && Lampa.Controller && Lampa.Controller.enabled) ? Lampa.Controller.enabled() : null;
+        var name = cur && cur.name;
+        if (name === FAB_CTRL) return;
+        fabReturnTo = name || HEAD_CTRL;
+        Lampa.Controller.toggle(FAB_CTRL);
+    }
+
+    function fabExit() {
+        Lampa.Controller.toggle(fabReturnTo || HEAD_CTRL);
+    }
+
+    function registerFabController() {
+        Lampa.Controller.add(FAB_CTRL, {
+            toggle: function () {
+                var $wrap = $('.lampa-fab-wrap');
+                Lampa.Controller.collectionSet($wrap);
+                Lampa.Controller.collectionFocus(fabLastFocus || $wrap.find('.lampa-fab-domain')[0], $wrap);
+            },
+            left: function () { Lampa.Navigator.move('left'); },
+            right: function () { Lampa.Navigator.move('right'); },
+            up: function () {},
+            down: fabExit,
+            back: fabExit,
+            enter: function () {
+                var $f = $('.lampa-fab-btn.focus').first();
+                if ($f.length) $f.trigger('hover:enter');
+            }
+        });
+
+        // Вход: стрелка ВВЕРХ, пока активна шапка. Слушаем в фазе capture.
+        if (!fabKeysBound) {
+            fabKeysBound = true;
+            window.addEventListener('keydown', function (e) {
+                if (e.keyCode !== 38) return;
+                var cur = Lampa.Controller.enabled();
+                if (cur && cur.name === HEAD_CTRL && document.querySelector('.lampa-fab-wrap')) {
+                    e.preventDefault();
+                    fabEnter();
+                }
+            }, true);
+        }
+    }
+
     // Плавающие иконки: планета (быстрый доступ к смене домена, рядом
     // с иконкой настроек) и перезагрузка страницы (сверху слева).
     function createFabButtons() {
         if (document.querySelector('.lampa-fab-domain')) return; // не дублируем при повторном init()
 
         var domainBtn = document.createElement('div');
-        domainBtn.className = 'lampa-fab-btn lampa-fab-domain';
+        domainBtn.className = 'lampa-fab-btn lampa-fab-domain selector';
         domainBtn.setAttribute('title', 'Сменить домен');
         domainBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5.5"></circle><ellipse cx="12" cy="12" rx="10" ry="3.2" transform="rotate(-18 12 12)"></ellipse></svg>';
-        domainBtn.addEventListener('click', function (e) {
-            e.stopPropagation();
-            openSwitchDomainModal();
-        });
+        bindFab(domainBtn, openSwitchDomainModal);
 
         var reloadBtn = document.createElement('div');
-        reloadBtn.className = 'lampa-fab-btn lampa-fab-reload';
+        reloadBtn.className = 'lampa-fab-btn lampa-fab-reload selector';
         reloadBtn.setAttribute('title', 'Перезагрузить страницу');
         reloadBtn.innerHTML = '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M4,12a1,1,0,0,1-2,0A9.983,9.983,0,0,1,18.242,4.206V2.758a1,1,0,1,1,2,0v4a1,1,0,0,1-1,1h-4a1,1,0,0,1,0-2h1.743A7.986,7.986,0,0,0,4,12Zm17-1a1,1,0,0,0-1,1A7.986,7.986,0,0,1,7.015,18.242H8.757a1,1,0,1,0,0-2h-4a1,1,0,0,0-1,1v4a1,1,0,0,0,2,0V19.794A9.984,9.984,0,0,0,22,12,1,1,0,0,0,21,11Z" fill="currentColor"></path></svg>';
-        reloadBtn.addEventListener('click', function (e) {
-            e.stopPropagation();
-            window.location.reload();
-        });
+        bindFab(reloadBtn, function () { window.location.reload(); });
 
-        document.body.appendChild(domainBtn);
-        document.body.appendChild(reloadBtn);
+        // Обёртка нужна, чтобы отдать обе кнопки контроллеру одним контейнером.
+        // Сама она не позиционируется — кнопки внутри остаются fixed.
+        var wrap = document.createElement('div');
+        wrap.className = 'lampa-fab-wrap';
+        wrap.appendChild(domainBtn);
+        wrap.appendChild(reloadBtn);
+        document.body.appendChild(wrap);
+
+        registerFabController();
     }
 
     // 1. ПРИЕМ СИГНАЛА НА ВОЗВРАТ
