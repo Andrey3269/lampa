@@ -229,6 +229,9 @@
                         {
                             name: isRun ? 'Вернуться' : 'Включить',
                             onSelect: function () {
+                                // ИСПРАВЛЕНО: раньше это окно не закрывалось перед следующим шагом
+                                // и оставалось висеть на экране под "Проверка..." / "Внимание" насовсем.
+                                Lampa.Modal.close();
                                 if (isRun) {
                                     window.location.href = proto + '//' + originalHost + '/?reset_domain=1';
                                 } else {
