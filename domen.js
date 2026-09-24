@@ -5,20 +5,19 @@
     var targetHost = 'lampa.run';
     var originalHost = 'lampa.mx';
 
-    // 1. ПРИЕМ СИГНАЛА НА ВОЗВРАТ: Если мы вернулись с lampa.run
+    // 1. ПРИЕМ СИГНАЛА НА ВОЗВРАТ
     if (window.location.search.indexOf('reset_domain=1') !== -1) {
-        // Стираем настройку авто-редиректа навсегда
         window.localStorage.removeItem('force_lampa_run');
 
-        // Очищаем адресную строку от ключа reset_domain, чтобы было красиво
+        // Очищаем адресную строку
         var cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
         window.history.replaceState({path: cleanUrl}, '', cleanUrl);
     }
 
-    // 2. АВТО-РЕДИРЕКТ: Если включен, и мы сейчас не на lampa.run
+    // 2. АВТО-РЕДИРЕКТ
     if (currentHost !== targetHost && window.localStorage.getItem('force_lampa_run') === 'true') {
         window.location.href = 'https://' + targetHost;
-        return; // Останавливаем загрузку текущей страницы
+        return;
     }
 
     function init() {
@@ -43,20 +42,23 @@
         `;
         document.head.appendChild(style);
 
-        // Создаем раздел в меню
+        // Создаем раздел "Домен"
         Lampa.SettingsApi.addComponent({
             component: 'custom_domain',
             icon: '<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>',
             name: 'Домен'
         });
 
-        // 3. ОПРЕДЕЛЯЕМ, КАКУЮ КНОПКУ ПОКАЗЫВАТЬ
+        // 3. ОПРЕДЕЛЯЕМ КНОПКУ
         if (currentHost !== targetHost) {
-            // МЫ НА LAMPA.MX — Показываем кнопку перехода на RUN
+            // МЫ НА LAMPA.MX
             Lampa.SettingsApi.addParam({
                 component: 'custom_domain',
                 param: { name: 'switch_domain_run', type: 'button' },
-                field: { name: 'Переключить на lampa.run (Навсегда)' },
+                field: {
+                    name: 'Переключить на lampa.run',
+                    description: 'Сейчас установлен: ' + currentHost
+                },
                 onChange: function () {
                     Lampa.Modal.open({
                         title: 'Смена домена',
@@ -79,11 +81,14 @@
                 }
             });
         } else {
-            // МЫ НА LAMPA.RUN — Показываем кнопку возврата на MX
+            // МЫ НА LAMPA.RUN
             Lampa.SettingsApi.addParam({
                 component: 'custom_domain',
                 param: { name: 'switch_domain_mx', type: 'button' },
-                field: { name: 'Вернуться на lampa.mx' },
+                field: {
+                    name: 'Вернуться на lampa.mx',
+                    description: 'Сейчас установлен: ' + currentHost
+                },
                 onChange: function () {
                     Lampa.Modal.open({
                         title: 'Возврат домена',
@@ -97,7 +102,6 @@
                             {
                                 name: 'Вернуться',
                                 onSelect: function () {
-                                    // Отправляем обратно на mx со специальным ключом сброса
                                     window.location.href = 'https://' + originalHost + '/?reset_domain=1';
                                 }
                             }
