@@ -5,6 +5,16 @@
     var targetHost = 'lampa.run';
     var originalHost = 'lampa.mx';
 
+    // Протокол берём от текущей страницы, а не хардкодим http://.
+    // ИСПРАВЛЕНО: раньше картинка-проверка и редирект всегда шли по http://,
+    // и если сама Lampa открыта по https://, браузер блокирует такой запрос
+    // как mixed content — проверка ВСЕГДА завершалась ошибкой, даже когда
+    // зеркало реально доступно.
+    var proto = (window.location.protocol === 'https:') ? 'https:' : 'http:';
+
+    // Коды кнопки "Назад"/Escape для разных пультов и клавиатур
+    var BACK_KEYCODES = [27, 8, 10009, 461, 166, 4];
+
     // Внедряем строгий плоский стиль (никакого glassmorphism и glow)
     var style = document.createElement('style');
     style.innerHTML = `
@@ -33,49 +43,90 @@
     document.head.appendChild(style);
 
     // Универсальная функция для безопасного закрытия окна и возврата фокуса пульту/клавиатуре
+    // ИСПРАВЛЕНО: раньше Controller.toggle вызывался через setTimeout(50), из-за чего
+    // между закрытием модалки и возвратом фокуса было "окно гонки" — повторное
+    // нажатие Esc/Назад в этот момент не попадало в Lampa и обрабатывалось
+    // системой как обычная навигация назад (либо просто терялось).
+    // В реальном коде Lampa (Select.show → onBack) Controller.toggle всегда
+    // вызывается синхронно сразу после закрытия — делаем так же.
     function closeAndRestore(controllerName) {
         Lampa.Modal.close();
-        setTimeout(function() {
+        try {
             if (window.Lampa && window.Lampa.Controller) {
                 Lampa.Controller.toggle(controllerName || 'settings');
             }
-        }, 50); // Минимальная задержка для того, чтобы Lampa успела очистить DOM
+        } catch (e) {
+            console.warn('[custom_domain] controller toggle failed', e);
+        }
     }
 
     // Главная функция проверки домена и редиректа
     function checkAndRedirect(isAuto) {
         var loader = null;
+        var aborted = false; // ИСПРАВЛЕНО: флаг отмены, чтобы прерванная проверка не "выстрелила" окном позже
         var prevController = (window.Lampa && window.Lampa.Controller && Lampa.Controller.enabled()) ? Lampa.Controller.enabled().name : 'settings';
+
+        var img = new Image();
+        var timer;
+
+        // ИСПРАВЛЕНО: полностью останавливаем проверку (таймер + обработчики картинки),
+        // чтобы img.onload/onerror не сработали "в фоне" уже после того,
+        // как пользователь закрыл окно проверки кнопкой Назад/Esc.
+        function cancelCheck() {
+            aborted = true;
+            clearTimeout(timer);
+            img.onload = null;
+            img.onerror = null;
+            img.src = '';
+            document.removeEventListener('keydown', overlayKeyHandler);
+        }
+
+        // ИСПРАВЛЕНО: для авто-проверки лоадер — это обычный <div>, а не Lampa.Modal,
+        // поэтому штатный onBack Lampa на него не действует, и нажатие Назад/Esc
+        // в этот момент уходило "мимо" Lampa. Ловим клавишу напрямую.
+        function overlayKeyHandler(e) {
+            if (BACK_KEYCODES.indexOf(e.keyCode) === -1) return;
+            e.preventDefault();
+            e.stopPropagation();
+            cancelCheck();
+            if (loader && loader.parentNode) loader.parentNode.removeChild(loader);
+        }
 
         if (isAuto) {
             loader = document.createElement('div');
             loader.className = 'flat-loader-overlay';
             loader.innerHTML = 'Проверка доступности ' + targetHost + '...';
             document.documentElement.appendChild(loader);
+            document.addEventListener('keydown', overlayKeyHandler);
         } else {
             Lampa.Modal.open({
                 title: 'Проверка...',
                 html: $('<div class="flat-domain-modal">Проверяем доступность <b>' + targetHost + '</b>... Пожалуйста, подождите.</div>'),
                 size: 'small',
-                onBack: function() { closeAndRestore(prevController); }, // Позволяет прервать проверку кнопкой Назад/Esc
+                onBack: function() {
+                    cancelCheck(); // ИСПРАВЛЕНО: не даём отменённой проверке открыть окно "Внимание" позже
+                    closeAndRestore(prevController);
+                },
                 buttons: []
             });
         }
 
-        var img = new Image();
-        var timer = setTimeout(function() {
+        timer = setTimeout(function() {
             img.src = '';
             handleFail();
         }, 4000); // Даем 4 секунды на попытку
 
         function handleFail() {
+            if (aborted) return; // ИСПРАВЛЕНО
             clearTimeout(timer);
             if (isAuto && loader && loader.parentNode) {
                 loader.parentNode.removeChild(loader);
+                document.removeEventListener('keydown', overlayKeyHandler);
             }
 
             // Если домен не ответил, показываем окно с выбором
             var waitLampa = setInterval(function() {
+                if (aborted) { clearInterval(waitLampa); return; } // ИСПРАВЛЕНО
                 if (window.appready && window.Lampa && window.Lampa.Modal && window.Lampa.Controller) {
                     clearInterval(waitLampa);
                     var fallbackController = isAuto ? 'main' : 'settings';
@@ -97,7 +148,7 @@
                                 name: 'Перейти принудительно',
                                 onSelect: function () {
                                     window.localStorage.setItem('force_lampa_run', 'true');
-                                    window.location.href = 'http://' + targetHost;
+                                    window.location.href = proto + '//' + targetHost;
                                 }
                             }
                         ]
@@ -107,17 +158,20 @@
         }
 
         img.onload = function() {
+            if (aborted) return; // ИСПРАВЛЕНО
             clearTimeout(timer);
+            document.removeEventListener('keydown', overlayKeyHandler);
             window.localStorage.setItem('force_lampa_run', 'true');
-            window.location.href = 'http://' + targetHost;
+            window.location.href = proto + '//' + targetHost;
         };
 
         img.onerror = function() {
+            if (aborted) return; // ИСПРАВЛЕНО
             handleFail();
         };
 
         // Ищем файл логотипа, который 100% есть в Lampa
-        img.src = 'http://' + targetHost + '/img/logo.svg?_=' + Date.now();
+        img.src = proto + '//' + targetHost + '/img/logo.svg?_=' + Date.now();
     }
 
     // 1. ПРИЕМ СИГНАЛА НА ВОЗВРАТ
@@ -169,7 +223,7 @@
                             name: isRun ? 'Вернуться' : 'Включить',
                             onSelect: function () {
                                 if (isRun) {
-                                    window.location.href = 'http://' + originalHost + '/?reset_domain=1';
+                                    window.location.href = proto + '//' + originalHost + '/?reset_domain=1';
                                 } else {
                                     checkAndRedirect(false);
                                 }
