@@ -119,9 +119,16 @@
         function handleFail() {
             if (aborted) return; // ИСПРАВЛЕНО
             clearTimeout(timer);
-            if (isAuto && loader && loader.parentNode) {
-                loader.parentNode.removeChild(loader);
-                document.removeEventListener('keydown', overlayKeyHandler);
+            if (isAuto) {
+                if (loader && loader.parentNode) {
+                    loader.parentNode.removeChild(loader);
+                    document.removeEventListener('keydown', overlayKeyHandler);
+                }
+            } else {
+                // ИСПРАВЛЕНО: раньше окно "Проверка..." закрывалось только в авто-режиме.
+                // В ручном режиме оно оставалось открытым под окном "Внимание", и после
+                // нажатия "Остаться тут" оно так и висело на экране, не исчезая.
+                Lampa.Modal.close();
             }
 
             // Если домен не ответил, показываем окно с выбором
