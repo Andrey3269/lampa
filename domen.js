@@ -39,6 +39,45 @@
             display: flex; align-items: center; justify-content: center;
             color: #fff; font-size: 1.5em; font-family: sans-serif; text-align: center;
         }
+
+        /* Плавающие кнопки: планета (домен) и перезагрузка страницы.
+           Стиль в тон остальному плагину — плоский, без свечения и теней. */
+        .lampa-fab-btn {
+            position: fixed;
+            top: 18px;
+            width: 46px;
+            height: 46px;
+            background: #141414;
+            border: 1px solid #333;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #888;
+            cursor: pointer;
+            z-index: 9998;
+            box-shadow: none !important;
+            text-shadow: none !important;
+            -webkit-tap-highlight-color: transparent;
+            transition: color .15s ease, border-color .15s ease, background-color .15s ease;
+        }
+        .lampa-fab-btn svg {
+            width: 22px;
+            height: 22px;
+            pointer-events: none;
+        }
+        .lampa-fab-btn:hover,
+        .lampa-fab-btn:focus,
+        .lampa-fab-btn.hover,
+        .lampa-fab-btn.focus {
+            color: #fff;
+            border-color: #666;
+            background: #1c1c1c;
+        }
+        /* Рядом с иконкой настроек (верх, справа) */
+        .lampa-fab-domain { right: 70px; }
+        /* Кнопка перезагрузки страницы — сверху слева */
+        .lampa-fab-reload { left: 18px; }
     `;
     document.head.appendChild(style);
 
@@ -181,6 +220,68 @@
         img.src = proto + '//' + targetHost + '/img/logo.svg?_=' + Date.now();
     }
 
+    // Окно переключения домена — вынесено в отдельную функцию,
+    // чтобы вызывать его и из настроек, и из плавающей иконки-планеты.
+    function openSwitchDomainModal() {
+        var isRun = (currentHost === targetHost);
+        var prevController = (window.Lampa && window.Lampa.Controller && Lampa.Controller.enabled()) ? Lampa.Controller.enabled().name : 'settings';
+
+        Lampa.Modal.open({
+            title: isRun ? 'Возврат домена' : 'Смена домена',
+            html: $('<div class="flat-domain-modal">' +
+                   (isRun ? 'Отключить авто-переход и вернуться на <b>lampa.mx</b>?' : 'Включить автоматический переход и сменить домен на <b>lampa.run</b>?')
+                   + '</div>'),
+            size: 'small',
+            onBack: function() { closeAndRestore(prevController); }, // ЖЕЛЕЗНАЯ ЗАЩИТА ESCAPE / НАЗАД
+            buttons: [
+                {
+                    name: 'Отмена',
+                    onSelect: function () { closeAndRestore(prevController); }
+                },
+                {
+                    name: isRun ? 'Вернуться' : 'Включить',
+                    onSelect: function () {
+                        // ИСПРАВЛЕНО: раньше это окно не закрывалось перед следующим шагом
+                        // и оставалось висеть на экране под "Проверка..." / "Внимание" насовсем.
+                        Lampa.Modal.close();
+                        if (isRun) {
+                            window.location.href = proto + '//' + originalHost + '/?reset_domain=1';
+                        } else {
+                            checkAndRedirect(false);
+                        }
+                    }
+                }
+            ]
+        });
+    }
+
+    // Плавающие иконки: планета (быстрый доступ к смене домена, рядом
+    // с иконкой настроек) и перезагрузка страницы (сверху слева).
+    function createFabButtons() {
+        if (document.querySelector('.lampa-fab-domain')) return; // не дублируем при повторном init()
+
+        var domainBtn = document.createElement('div');
+        domainBtn.className = 'lampa-fab-btn lampa-fab-domain';
+        domainBtn.setAttribute('title', 'Сменить домен');
+        domainBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5.5"></circle><ellipse cx="12" cy="12" rx="10" ry="3.2" transform="rotate(-18 12 12)"></ellipse></svg>';
+        domainBtn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            openSwitchDomainModal();
+        });
+
+        var reloadBtn = document.createElement('div');
+        reloadBtn.className = 'lampa-fab-btn lampa-fab-reload';
+        reloadBtn.setAttribute('title', 'Перезагрузить страницу');
+        reloadBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 15.5-6.36L21 8"></path><path d="M21 3v5h-5"></path><path d="M21 12a9 9 0 0 1-15.5 6.36L3 16"></path><path d="M3 21v-5h5"></path></svg>';
+        reloadBtn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            window.location.reload();
+        });
+
+        document.body.appendChild(domainBtn);
+        document.body.appendChild(reloadBtn);
+    }
+
     // 1. ПРИЕМ СИГНАЛА НА ВОЗВРАТ
     if (window.location.search.indexOf('reset_domain=1') !== -1) {
         window.localStorage.removeItem('force_lampa_run');
@@ -194,7 +295,7 @@
     }
 
     function init() {
-        // Создаем раздел "Домен"
+        // Создаем раздел "Домен" (остаётся в Настройках — там же очистка кэша)
         Lampa.SettingsApi.addComponent({
             component: 'custom_domain',
             icon: '<svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>',
@@ -211,37 +312,7 @@
                 name: isRun ? 'Вернуться на lampa.mx' : 'Переключить на lampa.run',
                 description: 'Сейчас установлен: ' + currentHost
             },
-            onChange: function () {
-                var prevController = (window.Lampa && window.Lampa.Controller && Lampa.Controller.enabled()) ? Lampa.Controller.enabled().name : 'settings';
-
-                Lampa.Modal.open({
-                    title: isRun ? 'Возврат домена' : 'Смена домена',
-                    html: $('<div class="flat-domain-modal">' +
-                           (isRun ? 'Отключить авто-переход и вернуться на <b>lampa.mx</b>?' : 'Включить автоматический переход и сменить домен на <b>lampa.run</b>?')
-                           + '</div>'),
-                    size: 'small',
-                    onBack: function() { closeAndRestore(prevController); }, // ЖЕЛЕЗНАЯ ЗАЩИТА ESCAPE / НАЗАД
-                    buttons: [
-                        {
-                            name: 'Отмена',
-                            onSelect: function () { closeAndRestore(prevController); }
-                        },
-                        {
-                            name: isRun ? 'Вернуться' : 'Включить',
-                            onSelect: function () {
-                                // ИСПРАВЛЕНО: раньше это окно не закрывалось перед следующим шагом
-                                // и оставалось висеть на экране под "Проверка..." / "Внимание" насовсем.
-                                Lampa.Modal.close();
-                                if (isRun) {
-                                    window.location.href = proto + '//' + originalHost + '/?reset_domain=1';
-                                } else {
-                                    checkAndRedirect(false);
-                                }
-                            }
-                        }
-                    ]
-                });
-            }
+            onChange: openSwitchDomainModal
         });
 
         // Кнопка сброса кэша
@@ -270,6 +341,9 @@
                 });
             }
         });
+
+        // Плавающие иконки: планета рядом с настройками + кнопка перезагрузки слева вверху
+        createFabButtons();
     }
 
     if (window.appready) {
