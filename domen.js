@@ -32,19 +32,38 @@
     `;
     document.head.appendChild(style);
 
-    // Функция показа ошибки, если домен не загрузился
+    // Функция показа окна при ошибке проверки (с возможностью принудительного перехода)
     function showFailModal() {
+        // Ждем, пока Lampa полностью загрузится, чтобы контроллер пульта не завис
         var waitLampa = setInterval(function() {
             if (window.appready && window.Lampa && window.Lampa.Modal) {
                 clearInterval(waitLampa);
-                Lampa.Modal.open({
-                    title: 'Ошибка подключения',
-                    html: $('<div class="flat-domain-modal">Не удалось подключиться к домену <b>' + targetHost + '</b>.<br><br>Возможно, он заблокирован провайдером или временно недоступен.<br><br>Авто-переход отключен. Вы возвращены на стандартный <b>' + originalHost + '</b>.</div>'),
-                    size: 'small',
-                    buttons: [
-                        { name: 'Понятно', onSelect: function () { Lampa.Modal.close(); } }
-                    ]
-                });
+
+                // Закрываем любые текущие окна и даем паузу 300мс, чтобы Lampa освободила контроллер
+                Lampa.Modal.close();
+                setTimeout(function() {
+                    Lampa.Modal.open({
+                        title: 'Внимание',
+                        html: $('<div class="flat-domain-modal">Не удалось автоматически проверить <b>' + targetHost + '</b>.<br><br>Возможно, телевизор заблокировал фоновую проверку, но сайт работает.<br><br>Что сделать?</div>'),
+                        size: 'small',
+                        buttons: [
+                            {
+                                name: 'Отмена (Остаться тут)',
+                                onSelect: function () {
+                                    window.localStorage.removeItem('force_lampa_run');
+                                    Lampa.Modal.close();
+                                }
+                            },
+                            {
+                                name: 'Перейти принудительно',
+                                onSelect: function () {
+                                    window.localStorage.setItem('force_lampa_run', 'true');
+                                    window.location.href = 'http://' + targetHost;
+                                }
+                            }
+                        ]
+                    });
+                }, 300);
             }
         }, 500);
     }
@@ -54,13 +73,11 @@
         var loader = null;
 
         if (isAuto) {
-            // Если это авто-запуск, делаем темный экран загрузки
             loader = document.createElement('div');
             loader.className = 'flat-loader-overlay';
             loader.innerHTML = 'Проверка доступности ' + targetHost + '...';
             document.documentElement.appendChild(loader);
         } else {
-            // Если ручное нажатие — показываем окно без кнопок
             Lampa.Modal.open({
                 title: 'Проверка...',
                 html: $('<div class="flat-domain-modal">Проверяем доступность <b>' + targetHost + '</b>... Пожалуйста, подождите.</div>'),
@@ -69,38 +86,33 @@
             });
         }
 
-        // Проверяем доступность домена, пытаясь загрузить иконку (работает обходя CORS)
         var img = new Image();
+        // Даем 4 секунды на попытку
         var timer = setTimeout(function() {
             img.src = '';
             handleFail();
-        }, 5000); // 5 секунд на попытку
+        }, 4000);
 
         function handleFail() {
             clearTimeout(timer);
-            window.localStorage.removeItem('force_lampa_run'); // Стираем команду на авто-переход
-
-            if (isAuto) {
-                if (loader && loader.parentNode) loader.parentNode.removeChild(loader);
-            } else {
-                Lampa.Modal.close();
+            if (isAuto && loader && loader.parentNode) {
+                loader.parentNode.removeChild(loader);
             }
-            showFailModal(); // Показываем окно об ошибке
+            showFailModal();
         }
 
         img.onload = function() {
             clearTimeout(timer);
-            // Домен доступен! Запоминаем и переходим
             window.localStorage.setItem('force_lampa_run', 'true');
             window.location.href = 'http://' + targetHost;
         };
 
         img.onerror = function() {
-            handleFail(); // Ошибка загрузки = домен заблокирован
+            handleFail();
         };
 
-        // Запрашиваем файл с целевого домена
-        img.src = 'http://' + targetHost + '/favicon.ico?_=' + Date.now();
+        // Запрашиваем файл логотипа, который 100% есть в любой сборке Lampa
+        img.src = 'http://' + targetHost + '/img/logo.svg?_=' + Date.now();
     }
 
     // 1. ПРИЕМ СИГНАЛА НА ВОЗВРАТ
@@ -113,8 +125,6 @@
     // 2. АВТО-РЕДИРЕКТ (С ПРОВЕРКОЙ)
     if (currentHost !== targetHost && window.localStorage.getItem('force_lampa_run') === 'true') {
         checkAndRedirect(true);
-        // Не используем return, чтобы Lampa загрузилась на фоне (под черным экраном)
-        // Если проверка провалится, мы просто уберем черный экран, и вы останетесь в рабочей Lampa
     }
 
     function init() {
@@ -150,14 +160,15 @@
                         {
                             name: isRun ? 'Вернуться' : 'Включить',
                             onSelect: function () {
-                                if (isRun) {
-                                    // Возврат (проверять mx не нужно, это родной домен виджета)
-                                    window.location.href = 'http://' + originalHost + '/?reset_domain=1';
-                                } else {
-                                    Lampa.Modal.close();
-                                    // Запускаем проверку перед переходом
-                                    setTimeout(function() { checkAndRedirect(false); }, 100);
-                                }
+                                Lampa.Modal.close();
+                                // Даем время закрыться окну, чтобы не завис контроллер
+                                setTimeout(function() {
+                                    if (isRun) {
+                                        window.location.href = 'http://' + originalHost + '/?reset_domain=1';
+                                    } else {
+                                        checkAndRedirect(false);
+                                    }
+                                }, 300);
                             }
                         }
                     ]
