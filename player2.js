@@ -1,22 +1,14 @@
 (function () {
   'use strict';
 
-  // =========================================================
-  // Защита от повторной загрузки
-  // =========================================================
+  if (window.lampa_wtch_unified_v5) return;
+  window.lampa_wtch_unified_v5 = true;
 
-  if (window.lampa_wtch_unified_v4) return;
-  window.lampa_wtch_unified_v4 = true;
+  var VERSION = '5.0.0';
 
-  var VERSION = '4.0.0';
-
-  // http://wtch.ch/m — это загрузчик WTCH
-  // Он сам подключает http://wtch.ch/online.js
+  // http://wtch.ch/m — это загрузчик WTCH.
+  // Сам /m подключает http://wtch.ch/online.js
   var SCRIPT_URL = 'http://wtch.ch/m';
-
-  // =========================================================
-  // Безопасный вызов
-  // =========================================================
 
   function safe(fn) {
     try {
@@ -27,40 +19,35 @@
   }
 
   // =========================================================
-  // CSS
+  // 1. CSS
   // =========================================================
 
   function injectCSS() {
-
-    if (document.getElementById('lampa_wtch_hide_css_v4')) {
-      return;
-    }
+    if (document.getElementById('lampa_wtch_hide_css_v5')) return;
 
     var style = document.createElement('style');
 
-    style.id = 'lampa_wtch_hide_css_v4';
+    style.id = 'lampa_wtch_hide_css_v5';
 
     style.innerHTML = `
       /* =====================================================
          SHOWY PRO
          ===================================================== */
 
-      /*
-       * Сам рекламный блок оставляем как маленький spacer,
-       * чтобы найденные фильмы не залезали на кнопки/контент.
-       */
-
       .showy-pro-entry-banner {
         display: block !important;
         visibility: hidden !important;
+        opacity: 0 !important;
+
         height: 12px !important;
         min-height: 12px !important;
         max-height: 12px !important;
+
         margin: 0 0 8px 0 !important;
         padding: 0 !important;
+
         overflow: hidden !important;
         pointer-events: none !important;
-        opacity: 0 !important;
       }
 
       .showy-pro-entry-banner__content,
@@ -80,7 +67,7 @@
 
 
       /* =====================================================
-         TRAILERS
+         TRAILERS / YOUTUBE
          ===================================================== */
 
       .view--trailer,
@@ -120,10 +107,13 @@
       .torrent-view-button,
       .torrent-button,
       .button--torrent,
+
       [data-action="torrent"],
       [data-action="torrents"],
+
       [data-type="torrent"],
       [data-type="torrents"],
+
       .full-start__button[data-subtitle*="торрент"],
       .full-start__button[data-subtitle*="Torrent"] {
         display: none !important;
@@ -137,40 +127,30 @@
   }
 
   // =========================================================
-  // Удаление ненужных элементов
-  //
-  // ВАЖНО:
-  // Здесь НЕТ MutationObserver.
-  // Очистка выполняется только при открытии full-страницы.
+  // 2. Удаляем ненужные элементы
   // =========================================================
 
   function removeUnwantedUI(root) {
-
     var scope = root || document;
 
     var selectors = [
 
       // -----------------------------------------------------
-      // Showy PRO
-      // -----------------------------------------------------
-
-      '.showy-pro-entry-banner',
-
-      // -----------------------------------------------------
-      // YouTube / trailers
+      // Trailers
       // -----------------------------------------------------
 
       '.view--trailer',
+      '[data-action="trailer"]',
       '.trailer-view',
       '.trailer-button',
       '.button--trailer',
-      '[data-action="trailer"]',
+
       '[data-action="youtube"]',
       '[data-type="trailer"]',
       '[data-type="youtube"]',
 
       // -----------------------------------------------------
-      // Shorts / shots
+      // Shorts / Shots
       // -----------------------------------------------------
 
       '.shots-view-button',
@@ -178,6 +158,7 @@
       '.shots-view',
       '.shorts-view',
       '.short-view',
+
       '[data-action="shots"]',
       '[data-action="shorts"]',
 
@@ -190,7 +171,6 @@
       '.torrent-view',
       '.torrent-view-button',
       '.torrent-button',
-      '.button--torrent',
 
       '[data-action="torrent"]',
       '[data-action="torrents"]',
@@ -198,17 +178,22 @@
       '[data-type="torrent"]',
       '[data-type="torrents"]',
 
+      '.button--torrent',
+
       '.full-start__button[data-subtitle*="торрент"]',
       '.full-start__button[data-subtitle*="Torrent"]'
     ];
+
+    // -------------------------------------------------------
+    // Удаление по классам / атрибутам
+    // -------------------------------------------------------
 
     safe(function () {
 
       for (var i = 0; i < selectors.length; i++) {
 
-        var nodes = scope.querySelectorAll(
-          selectors[i]
-        );
+        var nodes =
+          scope.querySelectorAll(selectors[i]);
 
         for (var j = 0; j < nodes.length; j++) {
 
@@ -222,14 +207,15 @@
     });
 
     // -------------------------------------------------------
-    // Старый smart-фильтр торрент-кнопок
+    // Удаление торрент-кнопок по тексту
     // -------------------------------------------------------
 
     safe(function () {
 
-      var buttons = scope.querySelectorAll(
-        '.full-start__button, .selector'
-      );
+      var buttons =
+        scope.querySelectorAll(
+          '.full-start__button, .selector'
+        );
 
       for (var i = 0; i < buttons.length; i++) {
 
@@ -249,10 +235,76 @@
       }
 
     });
+
+    // -------------------------------------------------------
+    // Дополнительная очистка трейлеров / Shorts / YouTube
+    //
+    // Lampa иногда использует другие классы.
+    // Поэтому проверяем только full-start кнопки.
+    // -------------------------------------------------------
+
+    safe(function () {
+
+      var buttons =
+        scope.querySelectorAll(
+          '.full-start__button'
+        );
+
+      for (var i = 0; i < buttons.length; i++) {
+
+        var button = buttons[i];
+
+        // WTCH-кнопку не трогаем
+        if (
+          button.classList &&
+          button.classList.contains(
+            'wtch--button'
+          )
+        ) {
+          continue;
+        }
+
+        var text =
+          (button.textContent || '')
+            .replace(/\s+/g, ' ')
+            .trim()
+            .toLowerCase();
+
+        var subtitle =
+          (
+            button.getAttribute(
+              'data-subtitle'
+            ) || ''
+          ).toLowerCase();
+
+        var value =
+          text + ' ' + subtitle;
+
+        if (
+          value.indexOf('трейлер') !== -1 ||
+          value.indexOf('trailer') !== -1 ||
+
+          value.indexOf('youtube') !== -1 ||
+
+          value.indexOf('shorts') !== -1 ||
+          value.indexOf('шорт') !== -1 ||
+
+          value.indexOf('клип') !== -1 ||
+          value.indexOf('clips') !== -1
+        ) {
+
+          try {
+            button.remove();
+          } catch (e) {}
+
+        }
+      }
+
+    });
   }
 
   // =========================================================
-  // Отключение torrents
+  // 3. Выключаем torrents
   // =========================================================
 
   function disableTorrentSetting() {
@@ -270,7 +322,8 @@
       if (
         window.Lampa &&
         window.Lampa.SettingsApi &&
-        typeof window.Lampa.SettingsApi.addParam === 'function'
+        typeof window.Lampa.SettingsApi.addParam ===
+          'function'
       ) {
 
         if (window.lampa_settings) {
@@ -283,27 +336,131 @@
   }
 
   // =========================================================
-  // Поиск кнопки WTCH
+  // 4. Запускаем WTCH через его штатный launcher
   // =========================================================
 
-  function findWTCHButton(root) {
+  function launchWTCH(movie) {
 
-    var scope = root || document;
+    if (!movie || !window.Lampa) {
+      return false;
+    }
 
+    var plugins = safe(function () {
+
+      return (
+        Lampa.Manifest &&
+        Lampa.Manifest.plugins
+      );
+
+    });
+
+    /*
+     * online.js публикует именно этот launcher:
+     *
+     * Lampa.Manifest.plugins.onContextLauch(...)
+     *
+     * Используем его напрямую, чтобы кнопка
+     * "Смотреть" открывала тот же WTCH-компонент.
+     */
+
+    if (
+      plugins &&
+      plugins.component === 'wtch' &&
+      typeof plugins.onContextLauch ===
+        'function'
+    ) {
+
+      safe(function () {
+        plugins.onContextLauch(movie);
+      });
+
+      return true;
+    }
+
+    return false;
+  }
+
+  // =========================================================
+  // 5. Ищем кнопку "Смотреть"
+  // =========================================================
+
+  function findWatchButton(root) {
+
+    var scope =
+      root || document;
+
+    var button = null;
+
+    // Штатные варианты
     var selectors = [
-      '.wtch--button',
-      '.view--online',
-      '[data-subtitle*="WTCH"]',
-      '[data-subtitle*="wtch"]'
+      '.view--play',
+      '.view--watch',
+      '[data-action="play"]',
+      '[data-action="watch"]'
     ];
 
     for (var i = 0; i < selectors.length; i++) {
 
-      var button =
-        scope.querySelector(selectors[i]);
+      button = safe(function () {
+        return scope.querySelector(
+          selectors[i]
+        );
+      });
 
-      if (button) {
+      if (
+        button &&
+        !(
+          button.classList &&
+          button.classList.contains(
+            'wtch--button'
+          )
+        )
+      ) {
         return button;
+      }
+    }
+
+    // Дополнительно ищем по названию
+    var buttons = safe(function () {
+
+      return scope.querySelectorAll(
+        '.full-start__button'
+      );
+
+    });
+
+    if (!buttons) {
+      return null;
+    }
+
+    for (var j = 0; j < buttons.length; j++) {
+
+      var item = buttons[j];
+
+      if (
+        item.classList &&
+        item.classList.contains(
+          'wtch--button'
+        )
+      ) {
+        continue;
+      }
+
+      var text =
+        (item.textContent || '')
+          .replace(/\s+/g, ' ')
+          .trim()
+          .toLowerCase();
+
+      if (
+        text === 'смотреть' ||
+        text === 'смотреть онлайн' ||
+        text === 'watch' ||
+        text === 'watch online'
+      ) {
+
+        return item;
+
       }
     }
 
@@ -311,106 +468,131 @@
   }
 
   // =========================================================
-  // Автозапуск WTCH через кнопку "Смотреть"
+  // 6. Автозапуск WTCH по "Смотреть"
   // =========================================================
 
-  function installWatchAutostart(activity, movie) {
+  function installWatchAutostart(
+    root,
+    movie
+  ) {
 
-    var root =
-      activity &&
-      typeof activity.render === 'function'
-        ? activity.render()
-        : document;
-
-    if (!root) return;
-
-    var watchSelectors = [
-      '.view--play',
-      '.view--watch',
-      '[data-action="play"]',
-      '[data-action="watch"]',
-      '.full-start__button[data-action="play"]',
-      '.full-start__button[data-action="watch"]'
-    ];
-
-    var watchButton = null;
-
-    for (var i = 0; i < watchSelectors.length; i++) {
-
-      safe(function () {
-
-        if (!watchButton) {
-          watchButton =
-            root.querySelector(
-              watchSelectors[i]
-            );
-        }
-
-      });
-
-      if (watchButton) break;
-    }
-
-    if (!watchButton) return;
-
-    if (watchButton.getAttribute(
-      'data-wtch-autostart'
-    ) === '1') {
+    if (!root || !movie) {
       return;
     }
 
-    watchButton.setAttribute(
+    var button =
+      findWatchButton(root);
+
+    if (!button) {
+      return;
+    }
+
+    if (
+      button.getAttribute(
+        'data-wtch-autostart'
+      ) === '1'
+    ) {
+      return;
+    }
+
+    button.setAttribute(
       'data-wtch-autostart',
       '1'
     );
 
-    $(watchButton).on(
+    $(button).on(
       'hover:enter.wtch_autostart',
-      function () {
+      function (event) {
 
-        // Небольшая задержка, чтобы WTCH успел
-        // создать свою кнопку/component.
-        setTimeout(function () {
+        // Не даём штатной кнопке открыть
+        // другой плеер.
+        safe(function () {
 
-          var button =
-            findWTCHButton(
-              root
-            );
-
-          if (!button) {
-            button =
-              findWTCHButton(
-                document
-              );
+          if (
+            event &&
+            event.preventDefault
+          ) {
+            event.preventDefault();
           }
 
-          if (!button) return;
+        });
 
-          safe(function () {
+        safe(function () {
 
-            $(button).trigger(
-              'hover:enter'
-            );
+          if (
+            event &&
+            event.stopImmediatePropagation
+          ) {
+            event.stopImmediatePropagation();
+          }
 
-          });
+        });
 
-        }, 80);
+        safe(function () {
+
+          if (
+            event &&
+            event.stopPropagation
+          ) {
+            event.stopPropagation();
+          }
+
+        });
+
+        // ---------------------------------------------------
+        // WTCH уже готов
+        // ---------------------------------------------------
+
+        if (
+          launchWTCH(movie)
+        ) {
+          return;
+        }
+
+        // ---------------------------------------------------
+        // WTCH ещё догружается
+        // ---------------------------------------------------
+
+        var tries = 0;
+
+        var timer =
+          setInterval(function () {
+
+            tries++;
+
+            if (
+              launchWTCH(movie)
+            ) {
+
+              clearInterval(timer);
+
+              return;
+            }
+
+            if (tries >= 20) {
+              clearInterval(timer);
+            }
+
+          }, 150);
 
       }
     );
   }
 
   // =========================================================
-  // Следим только за Lampa full
+  // 7. Следим за full Lampa
   // =========================================================
 
   function installUiCleaner() {
 
-    if (window.lampa_wtch_ui_cleaner_v4) {
+    if (
+      window.lampa_wtch_ui_cleaner_v5
+    ) {
       return;
     }
 
-    window.lampa_wtch_ui_cleaner_v4 = true;
+    window.lampa_wtch_ui_cleaner_v5 =
+      true;
 
     safe(function () {
 
@@ -421,44 +603,86 @@
 
         Lampa.Listener.follow(
           'full',
-          function (event) {
+          function (e) {
 
             if (
-              event.type === 'complite' ||
-              event.type === 'complete'
+              e.type !== 'complite' &&
+              e.type !== 'complete'
             ) {
-
-              setTimeout(function () {
-
-                var activity =
-                  event.object &&
-                  event.object.activity
-                    ? event.object.activity
-                    : null;
-
-                var root =
-                  activity &&
-                  typeof activity.render === 'function'
-                    ? activity.render()
-                    : document;
-
-                removeUnwantedUI(root);
-
-                /*
-                 * Один раз после создания WTCH-кнопки
-                 * ставим автозапуск с "Смотреть".
-                 */
-                installWatchAutostart(
-                  activity,
-                  event.data &&
-                  event.data.movie
-                    ? event.data.movie
-                    : null
-                );
-
-              }, 50);
-
+              return;
             }
+
+            var activity =
+              e.object &&
+              e.object.activity
+                ? e.object.activity
+                : null;
+
+            var root =
+              activity &&
+              typeof activity.render ===
+                'function'
+                ? activity.render()
+                : document;
+
+            var movie =
+              e.data &&
+              e.data.movie
+                ? e.data.movie
+                : (
+                    activity &&
+                    activity.card
+                      ? activity.card
+                      : null
+                  );
+
+            // Старое удаление UI
+            setTimeout(function () {
+
+              removeUnwantedUI(root);
+
+            }, 50);
+
+            // Повторно после дорисовки
+            setTimeout(function () {
+
+              removeUnwantedUI(root);
+
+            }, 250);
+
+            setTimeout(function () {
+
+              removeUnwantedUI(root);
+
+            }, 700);
+
+            // Автозапуск "Смотреть"
+            setTimeout(function () {
+
+              installWatchAutostart(
+                root,
+                movie
+              );
+
+            }, 100);
+
+            setTimeout(function () {
+
+              installWatchAutostart(
+                root,
+                movie
+              );
+
+            }, 500);
+
+            setTimeout(function () {
+
+              installWatchAutostart(
+                root,
+                movie
+              );
+
+            }, 1200);
 
           }
         );
@@ -469,19 +693,26 @@
   }
 
   // =========================================================
-  // Загрузка WTCH
+  // 8. Загружаем WTCH
   // =========================================================
 
   function loadWTCH() {
 
-    if (window.lampa_wtch_loaded_v4) {
+    if (
+      window.lampa_wtch_unified_loaded_v5
+    ) {
       return;
     }
 
-    window.lampa_wtch_loaded_v4 = true;
+    window.lampa_wtch_unified_loaded_v5 =
+      true;
+
+    var scripts = [
+      SCRIPT_URL
+    ];
 
     // -------------------------------------------------------
-    // Lampa.Utils
+    // Штатная загрузка Lampa
     // -------------------------------------------------------
 
     if (
@@ -491,13 +722,13 @@
         'function'
     ) {
 
-      var loaded = safe(function () {
+      var result = safe(function () {
 
         Lampa.Utils.putScriptAsync(
-          [SCRIPT_URL],
+          scripts,
           function () {
 
-            window.lampa_wtch_ready_v4 =
+            window.lampa_wtch_unified_ready_v5 =
               true;
 
           }
@@ -507,43 +738,56 @@
 
       });
 
-      if (loaded) {
+      if (result) {
         return;
       }
     }
 
     // -------------------------------------------------------
-    // Fallback <script>
+    // Fallback
     // -------------------------------------------------------
 
-    var script =
-      document.createElement('script');
+    var index = 0;
 
-    script.async = true;
-    script.src = SCRIPT_URL;
+    function next() {
 
-    script.onload = function () {
+      if (
+        index >= scripts.length
+      ) {
 
-      window.lampa_wtch_ready_v4 =
-        true;
+        window.lampa_wtch_unified_ready_v5 =
+          true;
 
-    };
+        return;
+      }
 
-    script.onerror = function () {
+      var script =
+        document.createElement(
+          'script'
+        );
 
-      window.lampa_wtch_ready_v4 =
-        false;
+      script.async = true;
 
-    };
+      script.src =
+        scripts[index++];
 
-    (
-      document.head ||
-      document.documentElement
-    ).appendChild(script);
+      script.onload =
+        next;
+
+      script.onerror =
+        next;
+
+      (
+        document.head ||
+        document.documentElement
+      ).appendChild(script);
+    }
+
+    next();
   }
 
   // =========================================================
-  // Запуск
+  // 9. Запуск
   // =========================================================
 
   function start() {
@@ -558,7 +802,7 @@
   }
 
   // =========================================================
-  // Ждём Lampa
+  // 10. Ждём готовности Lampa
   // =========================================================
 
   if (window.appready) {
@@ -578,8 +822,12 @@
           'app',
           function (event) {
 
-            if (event.type === 'ready') {
+            if (
+              event.type === 'ready'
+            ) {
+
               start();
+
             }
 
           }
@@ -592,12 +840,13 @@
   }
 
   // =========================================================
-  // Информация о плагине
+  // Public API
   // =========================================================
 
   window.lampa_wtch_unified = {
 
-    version: VERSION,
+    version:
+      VERSION,
 
     script:
       'http://wtch.ch/m',
@@ -609,6 +858,9 @@
       false,
 
     trailers:
+      false,
+
+    youtubeTrailers:
       false,
 
     shorts:
