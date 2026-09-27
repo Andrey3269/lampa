@@ -5748,6 +5748,25 @@ window.rch_nws[hostkey].Registry = function RchRegistry(client, startConnection)
     // ПАТЧ: вместо создания отдельной кнопки ".wtch--button" вешаем
     // открытие меню WTCH прямо на переданный элемент (у нас ниже это
     // "Смотреть" / .button--play). Кнопка при этом больше не создаётся.
+    //
+    // addButtonRetry нужен для разовой мгновенной проверки при старте:
+    // в этот момент карточка фильма формально уже "открыта", но сама
+    // кнопка .button--play может ещё не быть отрисована в DOM.
+    function addButtonRetry(getRender, movie, triesLeft) {
+      var btn = getRender();
+
+      if (btn && btn.length) {
+        addButton({ render: btn, movie: movie });
+        return;
+      }
+
+      if (triesLeft > 0) {
+        setTimeout(function () {
+          addButtonRetry(getRender, movie, triesLeft - 1);
+        }, 150);
+      }
+    }
+
     function addButton(e) {
       var btn = e.render;
       if (!btn || !btn.length || btn.data('wtchBound')) return;
@@ -5775,18 +5794,24 @@ window.rch_nws[hostkey].Registry = function RchRegistry(client, startConnection)
     }
     Lampa.Listener.follow('full', function(e) {
       if (e.type == 'complite') {
-        addButton({
-          render: e.object.activity.render().find('.button--play'),
-          movie: e.data.movie
-        });
+        addButtonRetry(
+          function () {
+            return e.object.activity.render().find('.button--play');
+          },
+          e.data.movie,
+          20
+        );
       }
     });
     try {
       if (Lampa.Activity.active().component == 'full') {
-        addButton({
-          render: Lampa.Activity.active().activity.render().find('.button--play'),
-          movie: Lampa.Activity.active().card
-        });
+        addButtonRetry(
+          function () {
+            return Lampa.Activity.active().activity.render().find('.button--play');
+          },
+          Lampa.Activity.active().card,
+          20 // пробуем ~3 секунды (20 x 150мс), пока кнопка не появится
+        );
       }
     } catch (e) {}
     if (Lampa.Manifest.app_digital >= 177) {
