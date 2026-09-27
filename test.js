@@ -6,9 +6,12 @@
 
   var VERSION = '1.3.0';
 
-  // Это сам JS-скрипт WTCH.
-  // Ничего к URL не добавляем.
-  var SCRIPT_URL = 'http://wtch.ch/m';
+  // Раньше здесь был их домен (http://wtch.ch/m).
+  // Теперь — ваша собственная пропатченная копия online.js на GitHub.
+  // Вставьте сюда raw-ссылку на файл wtch_online_patched.js из вашего репозитория,
+  // например:
+  // https://raw.githubusercontent.com/ВАШ_ЛОГИН/ВАШ_РЕПОЗИТОРИЙ/main/wtch_online_patched.js
+  var SCRIPT_URL = 'https://raw.githubusercontent.com/Andrey3269/lampa/refs/heads/main/wtch_ch_online.js';
 
   // =========================================================
   // Вспомогательная функция
@@ -133,124 +136,6 @@
   }
 
   // =========================================================
-  // 2.5. "Смотреть" становится единственной видимой кнопкой и
-  //      делает то же самое, что раньше делала WTCH. Их кнопку
-  //      прячем (не трогая её код), а "Смотреть" защищаем от
-  //      скрытия — судя по всему, сама Lampa вешает на неё
-  //      class="hide" / style="display:none", когда считает,
-  //      что источник не привязан. Мы это отменяем.
-  // =========================================================
-
-  var WTCH_DEBUG = true; // поставьте false, когда всё заработает
-
-  function wtchLog() {
-    if (!WTCH_DEBUG || !window.console) return;
-    try {
-      console.log.apply(console, ['[wtch-fix]'].concat(Array.prototype.slice.call(arguments)));
-    } catch (e) {}
-  }
-
-  // Принудительно возвращаем видимость и следим за ней постоянно
-  function guardPlayButtonVisible(playBtn) {
-    if (playBtn.dataset.wtchGuarded) return;
-    playBtn.dataset.wtchGuarded = '1';
-
-    function unhide() {
-      var changed = false;
-
-      if (playBtn.classList.contains('hide')) {
-        playBtn.classList.remove('hide');
-        changed = true;
-      }
-      if (playBtn.style.display === 'none') {
-        playBtn.style.display = '';
-        changed = true;
-      }
-      if (changed) wtchLog('вернули видимость .button--play (кто-то её прятал)');
-    }
-
-    unhide();
-
-    // Следим за изменениями class/style именно на этом элементе —
-    // если что-то попробует скрыть кнопку, мы тут же это отменим.
-    safe(function () {
-      var observer = new MutationObserver(function () { unhide(); });
-      observer.observe(playBtn, { attributes: true, attributeFilter: ['class', 'style'] });
-    });
-  }
-
-  // Прячем их кнопку WTCH, не трогая её код/обработчики
-  function hideWtchButton(wtchBtn) {
-    if (wtchBtn.style.display !== 'none') {
-      wtchBtn.style.display = 'none';
-      wtchLog('спрятали .wtch--button (код не трогаем)');
-    }
-  }
-
-  function watchButtonsTick(root) {
-    var scope = root || document;
-
-    safe(function () {
-      var playButtons = scope.querySelectorAll('.button--play');
-      var wtchButtons = scope.querySelectorAll('.wtch--button');
-
-      wtchLog('button--play count =', playButtons.length, ', wtch--button count =', wtchButtons.length);
-
-      for (var i = 0; i < playButtons.length; i++) {
-        guardPlayButtonVisible(playButtons[i]);
-      }
-
-      for (var j = 0; j < wtchButtons.length; j++) {
-        hideWtchButton(wtchButtons[j]);
-      }
-    });
-  }
-
-  // Один раз при старте вешаем обработчик на document (делегирование).
-  // Клик/вход на "Смотреть" — сразу дергаем скрытую кнопку WTCH.
-  var wtchForwardInstalled = false;
-
-  function installWtchForwarding() {
-    if (wtchForwardInstalled) return;
-    wtchForwardInstalled = true;
-
-    function forwardToWtch(target) {
-      var playBtn = target && target.closest ? target.closest('.button--play') : null;
-      if (!playBtn) return;
-
-      var wtchBtn = document.querySelector('.wtch--button');
-      wtchLog('"Смотреть" активирована, wtch--button найден =', !!wtchBtn);
-
-      if (!wtchBtn) return;
-
-      safe(function () {
-        if (window.$) {
-          window.$(wtchBtn).trigger('hover:enter');
-        } else {
-          wtchBtn.click();
-        }
-      });
-    }
-
-    document.addEventListener('click', function (e) { forwardToWtch(e.target); }, true);
-
-    var hoverEnterTries = 0;
-    function bindHoverEnter() {
-      if (window.$) {
-        window.$(document).on('hover:enter', '.button--play', function () { forwardToWtch(this); });
-        wtchLog('hover:enter делегирование подключено');
-        return;
-      }
-      hoverEnterTries++;
-      if (hoverEnterTries < 100) setTimeout(bindHoverEnter, 100);
-      else wtchLog('не дождались jQuery для hover:enter');
-    }
-    safe(bindHoverEnter);
-
-    wtchLog('делегирование click/hover:enter для .button--play установлено');
-  }
-
-  // =========================================================
   // 3. Выключаем торренты
   // =========================================================
 
@@ -364,7 +249,6 @@
               });
 
               removeUnwantedUI(root);
-              watchButtonsTick(root);
 
             }, 50);
           }
@@ -380,7 +264,6 @@
       window.lampa_wtch_unified_observer =
         new MutationObserver(function () {
           removeUnwantedUI(document);
-          watchButtonsTick(document);
         });
 
       safe(function () {
@@ -498,9 +381,9 @@
     window.lampa_wtch_unified_loaded = true;
 
     // ВАЖНО:
-    // http://wtch.ch/m — это уже сам JS.
-    // Не добавляем /online.js
-    // Не добавляем /m/online.js
+    // SCRIPT_URL теперь указывает НАПРЯМУЮ на вашу пропатченную
+    // копию online.js (а не на их "заглушку" http://wtch.ch/m,
+    // которая сама донагружала online.js с их сервера).
     var scripts = [
       SCRIPT_URL
     ];
@@ -570,7 +453,6 @@
 
     installPlayerSkin();
 
-    installWtchForwarding();
   }
 
   // =========================================================
