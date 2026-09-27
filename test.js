@@ -153,68 +153,6 @@
     } catch (e) {}
   }
 
-  function openWtchSearch(e) {
-    wtchLog('openWtchSearch triggered', e && e.type);
-
-    if (e) {
-      safe(function () { e.preventDefault(); });
-      safe(function () { e.stopImmediatePropagation(); });
-    }
-
-    try {
-      var movie = null;
-
-      try {
-        movie = Lampa.Activity.active().movie || Lampa.Activity.active().card;
-      } catch (err) {
-        wtchLog('ERROR getting active movie:', err);
-      }
-
-      wtchLog('movie =', movie);
-
-      if (!movie) {
-        wtchLog('STOP: movie not found, nothing to search for');
-        return;
-      }
-
-      var id = '';
-      try {
-        id = Lampa.Utils.hash(
-          movie.number_of_seasons ? movie.original_name : movie.original_title
-        );
-      } catch (err) {
-        wtchLog('ERROR hashing id:', err);
-      }
-
-      var all = {};
-      try {
-        all = Lampa.Storage.get('clarification_search', '{}');
-      } catch (err) {
-        wtchLog('ERROR reading clarification_search:', err);
-      }
-
-      var pushData = {
-        url: '',
-        title: Lampa.Lang.translate('title_wtch'),
-        component: 'wtch',
-        search: (id && all[id]) ? all[id] : movie.title,
-        search_one: movie.title,
-        search_two: movie.original_title,
-        movie: movie,
-        page: 1,
-        clarification: !!(id && all[id])
-      };
-
-      wtchLog('Lampa.Activity.push(', pushData, ')');
-
-      Lampa.Activity.push(pushData);
-
-      wtchLog('push done, no exception thrown');
-    } catch (err) {
-      wtchLog('FATAL ERROR in openWtchSearch:', err);
-    }
-  }
-
   function installWtchOnWatchButton(root) {
     var scope = root || document;
 
@@ -225,25 +163,20 @@
 
       for (var i = 0; i < wtchButtons.length; i++) {
         var wtchBtn = wtchButtons[i];
-        var parent = wtchBtn.parentNode;
 
-        wtchLog('wtch--button outerHTML:', wtchBtn.outerHTML);
-        wtchLog('parent outerHTML:', parent ? parent.outerHTML : null);
-
-        // Вырезаем добавленную кнопку полностью
-        wtchBtn.remove();
-
-        if (!parent) {
-          wtchLog('STOP: no parentNode for wtch--button');
-          continue;
+        // Только прячем — НЕ удаляем и не трогаем её обработчик.
+        // Именно на этом элементе висит их рабочий код открытия меню.
+        if (wtchBtn.style.display !== 'none') {
+          wtchBtn.style.display = 'none';
+          wtchLog('hid wtch--button (kept in DOM, handlers untouched)');
         }
 
         var watchBtn = scope.querySelector('.button--play');
 
-        wtchLog('watchBtn found =', !!watchBtn, watchBtn ? watchBtn.outerHTML : null);
+        wtchLog('watchBtn found =', !!watchBtn);
 
         if (!watchBtn) {
-          wtchLog('STOP: no .view--online sibling found near removed wtch--button');
+          wtchLog('STOP: .button--play not found');
           continue;
         }
 
@@ -254,20 +187,32 @@
 
         watchBtn.dataset.wtchBound = '1';
 
-        // Клик мышью / тапом
-        watchBtn.addEventListener('click', openWtchSearch, true);
+        (function (hiddenWtchBtn) {
+          function forwardToWtch(e) {
+            wtchLog('play button activated, forwarding to hidden wtch button', e && e.type);
 
-        // Вход по пульту/клавиатуре (Lampa использует своё событие
-        // hover:enter, а не обычный click) — снимаем возможный
-        // родной обработчик и вешаем свой
-        safe(function () {
-          if (window.$) {
-            window.$(watchBtn).off('hover:enter').on('hover:enter', openWtchSearch);
-            wtchLog('bound click + hover:enter on watchBtn');
-          } else {
-            wtchLog('window.$ (jQuery) not available, only click bound');
+            safe(function () {
+              if (window.$) {
+                window.$(hiddenWtchBtn).trigger('hover:enter');
+              } else {
+                hiddenWtchBtn.click();
+              }
+            });
           }
-        });
+
+          // Мы НЕ вызываем preventDefault/stopImmediatePropagation
+          // и НЕ снимаем родные обработчики "Смотреть" — только
+          // добавляем открытие wtch-меню в дополнение.
+          watchBtn.addEventListener('click', forwardToWtch, true);
+
+          safe(function () {
+            if (window.$) {
+              window.$(watchBtn).on('hover:enter', forwardToWtch);
+            }
+          });
+        })(wtchBtn);
+
+        wtchLog('bound play button -> hidden wtch button (non-destructive)');
       }
     });
   }
