@@ -11,7 +11,7 @@
   // Вставьте сюда raw-ссылку на файл wtch_online_patched.js из вашего репозитория,
   // например:
   // https://raw.githubusercontent.com/ВАШ_ЛОГИН/ВАШ_РЕПОЗИТОРИЙ/main/wtch_online_patched.js
-  var SCRIPT_URL = 'https://raw.githubusercontent.com/Andrey3269/lampa/refs/heads/main/wtch_ch_online.js';
+  var SCRIPT_URL = 'https://andrey3269.github.io/lampa/wtch_ch_online.js';
 
   // =========================================================
   // Вспомогательная функция
