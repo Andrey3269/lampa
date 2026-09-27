@@ -54,22 +54,12 @@
             vertical-align: -0.25em;
             flex-shrink: 0;
         }
-        /* Кнопка перезагрузки в шапке, между уведомлениями и настройками */
-        .head__reload-btn {
-            display: -webkit-inline-box;
-            display: -webkit-inline-flex;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            width: 1.3em;
-            height: 1.3em;
-            margin: 0 .8em;
-            cursor: pointer;
-            color: inherit;
-        }
+        /* Кнопка перезагрузки в шапке, между уведомлениями и настройками.
+           Размер/паддинги/margin-left/подсветку фокуса-ховера НЕ трогаем —
+           их даёт родной класс .head__action, чтобы кнопка была
+           неотличима от остальных иконок шапки (круг при фокусе и т.п.) */
         .head__reload-btn svg {
-            width: 100%;
-            height: 100%;
+            display: block;
         }
     `;
     document.head.appendChild(style);
@@ -178,7 +168,7 @@
             if (!settingsIcon) return false;
 
             var btn = $(
-                '<div class="selector head__reload-btn" title="Перезагрузить страницу">' +
+                '<div class="head__action selector head__reload-btn" title="Перезагрузить страницу">' +
                 svg(ICON_RELOAD, 24) +
                 '</div>'
             );
