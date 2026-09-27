@@ -153,7 +153,8 @@
     } catch (e) {}
   }
 
-  function installWtchOnWatchButton(root) {
+  // Только прячем чужую кнопку (не трогаем её обработчик и не удаляем)
+  function hideWtchButtons(root) {
     var scope = root || document;
 
     safe(function () {
@@ -164,57 +165,72 @@
       for (var i = 0; i < wtchButtons.length; i++) {
         var wtchBtn = wtchButtons[i];
 
-        // Только прячем — НЕ удаляем и не трогаем её обработчик.
-        // Именно на этом элементе висит их рабочий код открытия меню.
         if (wtchBtn.style.display !== 'none') {
           wtchBtn.style.display = 'none';
           wtchLog('hid wtch--button (kept in DOM, handlers untouched)');
         }
-
-        var watchBtn = scope.querySelector('.button--play');
-
-        wtchLog('watchBtn found =', !!watchBtn);
-
-        if (!watchBtn) {
-          wtchLog('STOP: .button--play not found');
-          continue;
-        }
-
-        if (watchBtn.dataset.wtchBound) {
-          wtchLog('watchBtn already bound, skipping');
-          continue;
-        }
-
-        watchBtn.dataset.wtchBound = '1';
-
-        (function (hiddenWtchBtn) {
-          function forwardToWtch(e) {
-            wtchLog('play button activated, forwarding to hidden wtch button', e && e.type);
-
-            safe(function () {
-              if (window.$) {
-                window.$(hiddenWtchBtn).trigger('hover:enter');
-              } else {
-                hiddenWtchBtn.click();
-              }
-            });
-          }
-
-          // Мы НЕ вызываем preventDefault/stopImmediatePropagation
-          // и НЕ снимаем родные обработчики "Смотреть" — только
-          // добавляем открытие wtch-меню в дополнение.
-          watchBtn.addEventListener('click', forwardToWtch, true);
-
-          safe(function () {
-            if (window.$) {
-              window.$(watchBtn).on('hover:enter', forwardToWtch);
-            }
-          });
-        })(wtchBtn);
-
-        wtchLog('bound play button -> hidden wtch button (non-destructive)');
       }
     });
+  }
+
+  // Один раз при старте вешаем обработчик на document (делегирование).
+  // Он сработает для ЛЮБОЙ .button--play, когда бы она ни появилась —
+  // без гонки с моментом её создания/перерисовки.
+  var wtchForwardInstalled = false;
+
+  function installWtchForwarding() {
+    if (wtchForwardInstalled) return;
+    wtchForwardInstalled = true;
+
+    function forwardToWtch(target) {
+      var playBtn = target && target.closest ? target.closest('.button--play') : null;
+      if (!playBtn) return;
+
+      var wtchBtn = document.querySelector('.wtch--button');
+      wtchLog('play button activated (delegated), wtch--button found =', !!wtchBtn);
+
+      if (!wtchBtn) return;
+
+      safe(function () {
+        if (window.$) {
+          window.$(wtchBtn).trigger('hover:enter');
+        } else {
+          wtchBtn.click();
+        }
+      });
+    }
+
+    document.addEventListener(
+      'click',
+      function (e) { forwardToWtch(e.target); },
+      true
+    );
+
+    // hover:enter — это jQuery-событие, которое Lampa использует
+    // для входа с пульта/клавиатуры. jQuery может быть ещё не готова
+    // в момент старта, поэтому пробуем привязаться с повтором.
+    var hoverEnterTries = 0;
+
+    function bindHoverEnter() {
+      if (window.$) {
+        window.$(document).on('hover:enter', '.button--play', function () {
+          forwardToWtch(this);
+        });
+        wtchLog('bound hover:enter delegation (jQuery ready)');
+        return;
+      }
+
+      hoverEnterTries++;
+      if (hoverEnterTries < 100) {
+        setTimeout(bindHoverEnter, 100);
+      } else {
+        wtchLog('GAVE UP waiting for window.$ (jQuery) to bind hover:enter');
+      }
+    }
+
+    safe(bindHoverEnter);
+
+    wtchLog('installed global delegated forwarding for .button--play (click bound immediately)');
   }
 
   // =========================================================
@@ -331,7 +347,7 @@
               });
 
               removeUnwantedUI(root);
-              installWtchOnWatchButton(root);
+              hideWtchButtons(root);
 
             }, 50);
           }
@@ -347,7 +363,7 @@
       window.lampa_wtch_unified_observer =
         new MutationObserver(function () {
           removeUnwantedUI(document);
-          installWtchOnWatchButton(document);
+          hideWtchButtons(document);
         });
 
       safe(function () {
@@ -536,6 +552,8 @@
     disableTorrentSetting();
 
     installPlayerSkin();
+
+    installWtchForwarding();
   }
 
   // =========================================================
