@@ -4,7 +4,7 @@
   if (window.lampa_wtch_unified_v1) return;
   window.lampa_wtch_unified_v1 = true;
 
-  var VERSION = '1.5.0';
+  var VERSION = '1.6.0';
 
   // Это сам JS-скрипт WTCH.
   // Ничего к URL не добавляем.
@@ -416,13 +416,13 @@
       style.innerHTML = `
         /* ===== Карточки серий / сезонов (.online-prestige) ===== */
         .online-prestige {
-          border-radius: .6em !important;
-          background-color: rgba(255,255,255,.07) !important;
+          border-radius: .7em !important;
+          background-color: rgba(255,255,255,.06) !important;
           transition: transform .15s ease, box-shadow .15s ease, background .15s ease;
         }
         .online-prestige__img,
         .online-prestige__img > img {
-          border-radius: .5em !important;
+          border-radius: .6em !important;
         }
         .online-prestige__title {
           font-size: 1.35em !important;
@@ -436,18 +436,19 @@
            оставляем этот приём (чтобы не спорить с их же анимацией),
            просто делаем рамку акцентной и добавляем лёгкое увеличение. */
         .online-prestige.focus {
-          background-color: rgba(255,255,255,.07) !important;
-          transform: scale(1.015);
+          background-color: rgba(124,196,255,.12) !important;
+          transform: scale(1.02);
           transition: transform .15s ease;
         }
         .online-prestige.focus::after {
           border-color: #7cc4ff !important;
-          border-width: .22em !important;
+          border-width: .2em !important;
+          border-radius: .7em !important;
           box-shadow: 0 .6em 1.6em rgba(0,0,0,.45);
         }
         .online-prestige-watched {
-          border-radius: .6em !important;
-          background-color: rgba(255,255,255,.06) !important;
+          border-radius: .7em !important;
+          background-color: rgba(255,255,255,.05) !important;
         }
         .online-empty__button {
           border-radius: 2.4em !important;
@@ -472,56 +473,135 @@
           box-shadow: 0 0 0 .16em #7cc4ff !important;
         }
 
-        /* ===== Наша панель быстрого доступа (см. installSourceQuickBar) ===== */
+        /* ============================================================
+           Наша панель быстрого доступа (см. installSourceQuickBar)
+           ============================================================ */
         .wtch-quickbar {
           display: -webkit-box; display: -webkit-flex; display: flex;
           -webkit-flex-wrap: wrap; flex-wrap: wrap;
-          margin: 0 0 1.3em 0;
+          margin: 0 0 1.4em 0;
         }
         .wtch-quickbar__item {
           display: -webkit-box; display: -webkit-flex; display: flex;
           -webkit-box-align: center; -webkit-align-items: center; align-items: center;
           min-width: 9.5em;
-          padding: .75em 1.3em;
+          padding: .7em 1.3em;
           margin: 0 .6em .6em 0;
-          border-radius: 2.4em;
-          background: rgba(255,255,255,.1);
+          border-radius: 2.6em;
+          background: rgba(255,255,255,.08);
+          border: 1px solid rgba(255,255,255,.09);
           -webkit-backdrop-filter: blur(1em);
           backdrop-filter: blur(1em);
           cursor: pointer;
-          transition: transform .15s ease, box-shadow .15s ease, background .15s ease;
+          transition: transform .15s ease, box-shadow .15s ease, background .15s ease, border-color .15s ease;
+        }
+        .wtch-quickbar__item.hide { display: none !important; }
+        .wtch-quickbar__item:hover {
+          background: rgba(255,255,255,.14);
+          border-color: rgba(255,255,255,.18);
         }
         .wtch-quickbar__icon {
-          width: 1.3em; height: 1.3em;
-          margin-right: .6em;
+          display: -webkit-box; display: -webkit-flex; display: flex;
+          -webkit-box-align: center; -webkit-align-items: center; align-items: center;
+          -webkit-box-pack: center; -webkit-justify-content: center; justify-content: center;
+          width: 2.1em; height: 2.1em;
+          margin-right: .7em;
           -webkit-flex-shrink: 0; flex-shrink: 0;
-          opacity: .85;
+          border-radius: 50%;
+          background: rgba(255,255,255,.08);
+          opacity: .9;
         }
-        .wtch-quickbar__icon svg { width: 100%; height: 100%; display: block; }
-        .wtch-quickbar__label { font-size: 1.05em; font-weight: 500; white-space: nowrap; }
+        .wtch-quickbar__icon svg { width: 1.15em; height: 1.15em; display: block; }
+        .wtch-quickbar__text {
+          display: -webkit-box; display: -webkit-flex; display: flex;
+          -webkit-box-orient: vertical; -webkit-flex-direction: column; flex-direction: column;
+          overflow: hidden;
+        }
+        .wtch-quickbar__label {
+          font-size: 1.05em;
+          font-weight: 600;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        .wtch-quickbar__value {
+          font-size: .82em;
+          font-weight: 400;
+          opacity: .6;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          max-width: 12em;
+          margin-top: .1em;
+        }
+        .wtch-quickbar__value:empty { display: none; }
         .wtch-quickbar__item.focus {
           background: #fff; color: #0b0d10;
+          border-color: transparent;
           transform: scale(1.06);
           box-shadow: 0 0 0 .16em #7cc4ff, 0 .5em 1.4em rgba(0,0,0,.4);
         }
+        .wtch-quickbar__item.focus .wtch-quickbar__icon {
+          background: rgba(11,13,16,.1);
+        }
+        .wtch-quickbar__item.focus .wtch-quickbar__value {
+          opacity: .55;
+        }
 
-        /* ===== Классический selectbox для источника / сезона / озвучки ===== */
-        /* Класс "wtch-source-select" навешивается только пока активен   */
-        /* экран поиска озвучек — остальные меню приложения не трогаются. */
-        .wtch-source-select.selectbox { border-radius: 1em !important; }
-        .wtch-source-select .selectbox__title { font-size: 1.3em !important; font-weight: 600 !important; }
+        /* ============================================================
+           Классический selectbox для источника / сезона / озвучки /
+           общего экрана "Фильтр".
+           Класс "wtch-source-select" навешивается только пока активен
+           экран поиска озвучек — остальные меню приложения не трогаются.
+           ============================================================ */
+        .wtch-source-select.selectbox {
+          border-radius: 1.1em !important;
+          overflow: hidden;
+          box-shadow: -1.5em 0 3em rgba(0,0,0,.5);
+        }
+        .wtch-source-select .selectbox__title {
+          font-size: 1.25em !important;
+          font-weight: 700 !important;
+          padding-bottom: .6em !important;
+          margin-bottom: .4em !important;
+          border-bottom: 1px solid rgba(255,255,255,.08);
+        }
         .wtch-source-select .selectbox-item {
-          min-height: 3.4em !important;
-          padding: .8em 1.2em !important;
-          border-radius: .8em !important;
-          margin-bottom: .3em !important;
-          transition: transform .15s ease, box-shadow .15s ease, background .15s ease;
+          min-height: 3.3em !important;
+          padding: .75em 1.1em !important;
+          border-radius: .7em !important;
+          margin-bottom: .25em !important;
+          transition: transform .12s ease, box-shadow .12s ease, background .12s ease;
+        }
+        .wtch-source-select .selectbox-item:hover {
+          background: rgba(255,255,255,.06) !important;
         }
         .wtch-source-select .selectbox-item.focus {
           background: #fff !important;
           color: #0b0d10 !important;
-          transform: scale(1.03);
+          transform: scale(1.02);
           box-shadow: 0 0 0 .14em #7cc4ff, 0 .5em 1.2em rgba(0,0,0,.4) !important;
+        }
+        .wtch-source-select .selectbox-item__title {
+          font-size: 1.03em !important;
+          font-weight: 500 !important;
+        }
+        .wtch-source-select .selectbox-item__subtitle {
+          font-size: .85em !important;
+          opacity: .6;
+          margin-top: .15em !important;
+        }
+        .wtch-source-select .selectbox-item.focus .selectbox-item__subtitle {
+          opacity: .55;
+        }
+        .wtch-source-select .selectbox-item__checkbox {
+          -webkit-flex-shrink: 0; flex-shrink: 0;
+          opacity: .85;
+        }
+        .wtch-source-select .scroll__body::-webkit-scrollbar { width: .4em; }
+        .wtch-source-select .scroll__body::-webkit-scrollbar-thumb {
+          background: rgba(255,255,255,.18);
+          border-radius: 1em;
         }
       `;
 
@@ -553,6 +633,70 @@
     return WTCH_SOURCE_COMPONENTS.indexOf(String(active.component).toLowerCase()) !== -1;
   }
 
+  // =========================================================
+  // 4.65. Общие помощники экрана wtch
+  // =========================================================
+  //
+  // Используются и в installSourceFilterShortcut, и в installSourceQuickBar:
+  // текущий корень активности, кнопки фильтра, признак "это сериал" и
+  // кэш того, есть ли у текущего источника выбор сезона/перевода вообще
+  // (разные источники отдают разный набор — у части нет переключения
+  // перевода, и тогда соответствующую кнопку панели быстрого доступа
+  // показывать незачем).
+
+  function wtchActiveRoot() {
+    return safe(function () {
+      return Lampa.Activity.active().activity.render();
+    }) || $(document);
+  }
+
+  function wtchFindFilterButtons(root) {
+    var $bar = $(root).find('.torrent-filter');
+    if (!$bar.length) return null;
+
+    var $sort = $bar.find('.filter--sort');
+    var $search = $bar.find('.filter--search');
+    var $group = $bar.find('.simple-button--filter').not($sort).not($search).first();
+
+    if (!$sort.length && !$group.length) return null;
+
+    return { bar: $bar, sort: $sort, group: $group };
+  }
+
+  // Сериал это или фильм: у сериалов TMDB-карточка содержит
+  // number_of_seasons / first_air_date / name вместо title у фильмов.
+  function wtchIsSeries() {
+    return Boolean(safe(function () {
+      var movie = Lampa.Activity.active().movie;
+      if (!movie) return false;
+
+      return Boolean(
+        movie.number_of_seasons ||
+        movie.first_air_date ||
+        (movie.name && !movie.title)
+      );
+    }));
+  }
+
+  function wtchCurrentSourceKey() {
+    return String(safe(function () {
+      var btns = wtchFindFilterButtons(wtchActiveRoot());
+      return btns && btns.sort.length ? $('div', btns.sort).text().trim() : '';
+    }) || 'unknown');
+  }
+
+  var wtchCapabilityCache = {};
+  var wtchOnCapabilityUpdate = null;
+
+  function wtchGetCapabilities() {
+    return wtchCapabilityCache[wtchCurrentSourceKey()] || null;
+  }
+
+  function wtchSetCapabilities(caps) {
+    wtchCapabilityCache[wtchCurrentSourceKey()] = caps;
+    if (typeof wtchOnCapabilityUpdate === 'function') safe(wtchOnCapabilityUpdate);
+  }
+
   function installSourceFilterShortcut() {
     if (window.lampa_wtch_source_shortcut_installed) return;
     window.lampa_wtch_source_shortcut_installed = true;
@@ -581,6 +725,24 @@
           return;
         }
 
+        // Пока открыт общий экран "Фильтр" — смотрим, какие пункты в нём
+        // реально есть у текущего источника (сезона или перевода может
+        // не быть вовсе), и запоминаем это для панели быстрого доступа.
+        safe(function () {
+          var seasonWanted = Lampa.Lang.translate('torrent_serial_season');
+          var voiceWanted = Lampa.Lang.translate('torrent_parser_voice');
+          var hasSeason = false;
+          var hasVoice = false;
+
+          $('.selectbox-item').each(function () {
+            var text = $(this).text();
+            if (seasonWanted && text.indexOf(seasonWanted) !== -1) hasSeason = true;
+            if (voiceWanted && text.indexOf(voiceWanted) !== -1) hasVoice = true;
+          });
+
+          wtchSetCapabilities({ season: hasSeason, voice: hasVoice });
+        });
+
         var $sourceBtn = $('.simple-button--filter.filter--sort');
 
         if ($sourceBtn.length !== 1 || $sourceBtn.hasClass('hide')) {
@@ -608,26 +770,31 @@
   }
 
   // =========================================================
-  // 4.8. Панель быстрого доступа: Источник → Сезон → Озвучка → Качество
+  // 4.8. Панель быстрого доступа: Источник → Сезон → Озвучка
   // =========================================================
   //
-  // Следующий уровень: отдельная строка крупных "капсул" сверху экрана
-  // поиска озвучек, как в Z01 — по одной на Источник, Сезон, Озвучку и
-  // Качество. Каждая капсула сразу открывает нужный шаг, без блуждания
-  // по вложенным меню:
-  //  - "Источник"  — нажимает родную кнопку filter--sort (список
-  //                  источников/балансеров);
-  //  - "Сезон"     — открывает меню фильтра и сразу проваливается в
-  //                  группу "Сезон", без промежуточного экрана;
-  //  - "Озвучка"   — то же самое для группы "Перевод";
-  //  - "Качество"  — отдельный шаг: у wtch нет отдельного экрана выбора
-  //                  качества (плеер сам берёт лучшее доступное и
-  //                  умеет переключать его уже во время просмотра —
-  //                  кнопка качества в плеере уже оформлена п. 4.5).
-  //                  Капсула "Качество" задаёт предпочитаемое качество
-  //                  через тот же параметр, что читает сам скрипт
-  //                  (video_quality_default) — выбор реально запомнится
-  //                  и будет использован при следующей загрузке серии.
+  // Отдельная строка крупных "капсул" сверху экрана поиска озвучек —
+  // по одной на Источник, Сезон и Озвучку. Каждая капсула сразу
+  // открывает нужный шаг, без блуждания по вложенным меню:
+  //  - "Источник" — нажимает родную кнопку filter--sort (список
+  //                 источников/балансеров) и вторым, приглушённым
+  //                 рядком показывает, какой источник выбран сейчас;
+  //  - "Сезон"    — открывает меню фильтра и сразу проваливается в
+  //                 группу "Сезон". Кнопка показывается только для
+  //                 сериалов (см. wtchIsSeries) — у фильмов сезонов
+  //                 не бывает, и кнопка там просто не нужна;
+  //  - "Озвучка"  — то же самое для группы "Перевод". Кнопка
+  //                 показывается, только если у текущего источника
+  //                 вообще есть выбор перевода — это выясняется при
+  //                 первом открытии экрана "Фильтр" и кэшируется
+  //                 (см. wtchCapabilityCache / installSourceFilterShortcut),
+  //                 чтобы не показывать кнопку, которая ни к чему не
+  //                 приведёт, и не открывать вместо неё случайный
+  //                 экран "Фильтр".
+  //
+  // Отдельной кнопки "Качество" здесь больше нет: у плеера Lampa уже
+  // есть собственная настройка качества по умолчанию, дублировать её
+  // тут незачем.
   //
   // Выбор источника/сезона/озвучки запоминает сам скрипт wtch (по
   // фильму и источнику) — здесь это не дублируется.
@@ -638,7 +805,7 @@
   // wtch когда-нибудь переименует кнопки, модуль тихо перестанет
   // добавлять панель, ничего не сломав.
 
-  function installSourceQuickBar() {
+    function installSourceQuickBar() {
     if (window.lampa_wtch_quickbar_installed) return;
     window.lampa_wtch_quickbar_installed = true;
 
@@ -658,37 +825,14 @@
       var ICONS = {
         source: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 7h13M17 7l-3-3M17 7l-3 3" stroke-linecap="round" stroke-linejoin="round"/><path d="M20 17H7M7 17l3 3M7 17l3-3" stroke-linecap="round" stroke-linejoin="round"/></svg>',
         season: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4" stroke-linecap="round"/></svg>',
-        voice: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0014 0M12 18v3" stroke-linecap="round"/></svg>',
-        quality: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 6h10M17 6h3M4 12h4M11 12h9M4 18h13" stroke-linecap="round"/><circle cx="14" cy="6" r="2" fill="currentColor" stroke="none"/><circle cx="8" cy="12" r="2" fill="currentColor" stroke="none"/><circle cx="16" cy="18" r="2" fill="currentColor" stroke="none"/></svg>'
+        voice: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0014 0M12 18v3" stroke-linecap="round"/></svg>'
       };
 
-      function activeRoot() {
-        return safe(function () {
-          return Lampa.Activity.active().activity.render();
-        }) || $(document);
-      }
-
-      // Кнопки самого wtch: только filter--sort (источник) и filter--search
-      // названы явно в его коде, третья ("фильтр": сезон+озвучка) — это
-      // единственная оставшаяся кнопка того же класса.
-      function findFilterButtons(root) {
-        var $bar = $(root).find('.torrent-filter');
-        if (!$bar.length) return null;
-
-        var $sort = $bar.find('.filter--sort');
-        var $search = $bar.find('.filter--search');
-        var $group = $bar.find('.simple-button--filter').not($sort).not($search).first();
-
-        if (!$sort.length && !$group.length) return null;
-
-        return { bar: $bar, sort: $sort, group: $group };
-      }
-
-      function openFilterGroup(translateKey) {
-        var btns = findFilterButtons(activeRoot());
+      function openFilterGroup(translateKey, emptyMessage) {
+        var btns = wtchFindFilterButtons(wtchActiveRoot());
         if (!btns || !btns.group.length) {
           safe(function () {
-            Lampa.Noty.show(Lampa.Lang.translate('lampac_balanser_dont_work') || 'Недоступно для этого источника');
+            Lampa.Noty.show(emptyMessage || Lampa.Lang.translate('lampac_balanser_dont_work') || 'Недоступно для этого источника');
           });
           return;
         }
@@ -701,67 +845,50 @@
             return $(this).text().indexOf(wanted) !== -1;
           }).first();
 
-          if ($target.length) $target.trigger('hover:enter');
+          if ($target.length) {
+            $target.trigger('hover:enter');
+          } else {
+            // У этого источника такого пункта нет — не оставляем открытым
+            // "чужой" экран фильтра, а сразу закрываем и поясняем, что
+            // произошло, вместо тишины/непонятного зависшего меню.
+            safe(function () {
+              if (Lampa.Select && typeof Lampa.Select.close === 'function') Lampa.Select.close();
+            });
+            safe(function () {
+              Lampa.Noty.show(emptyMessage || 'Недоступно для этого источника');
+            });
+          }
         }, 40);
       }
 
       function openSource() {
-        var btns = findFilterButtons(activeRoot());
+        var btns = wtchFindFilterButtons(wtchActiveRoot());
         if (btns && btns.sort.length) btns.sort.trigger('hover:enter');
       }
 
       function openSeason() {
-        openFilterGroup('torrent_serial_season');
+        openFilterGroup('torrent_serial_season', 'У этого источника нет сезонов');
       }
 
       function openVoice() {
-        openFilterGroup('torrent_parser_voice');
+        openFilterGroup('torrent_parser_voice', 'У этого источника нет вариантов перевода');
       }
 
-      function openQuality() {
-        var current = String(safe(function () {
-          return Lampa.Storage.field('video_quality_default');
+      function currentSourceLabel() {
+        return String(safe(function () {
+          var btns = wtchFindFilterButtons(wtchActiveRoot());
+          return btns && btns.sort.length ? $('div', btns.sort).text().trim() : '';
         }) || '');
-
-        var options = [
-          { title: '4K / 2160p', value: '2160' },
-          { title: '1080p', value: '1080' },
-          { title: '720p', value: '720' },
-          { title: '480p', value: '480' },
-          { title: Lampa.Lang.translate('settings_video_quality_auto') || 'Авто', value: '' }
-        ];
-
-        Lampa.Select.show({
-          title: Lampa.Lang.translate('settings_video_quality') || Lampa.Lang.translate('torrent_serial_quality') || 'Качество',
-          items: options.map(function (option) {
-            return {
-              title: option.title,
-              value: option.value,
-              selected: current === option.value
-            };
-          }),
-          onSelect: function (item) {
-            Lampa.Select.close();
-
-            safe(function () {
-              Lampa.Storage.set('video_quality_default', item.value);
-            });
-
-            safe(function () {
-              Lampa.Noty.show((Lampa.Lang.translate('settings_video_quality') || 'Качество') + ': ' + item.title);
-            });
-          },
-          onBack: function () {
-            Lampa.Controller.toggle('content');
-          }
-        });
       }
 
       function buildItem(kind, label, action) {
         var $item = $(
-          '<div class="wtch-quickbar__item selector">' +
+          '<div class="wtch-quickbar__item selector" data-wtch-kind="' + kind + '">' +
             '<span class="wtch-quickbar__icon">' + ICONS[kind] + '</span>' +
-            '<span class="wtch-quickbar__label"></span>' +
+            '<span class="wtch-quickbar__text">' +
+              '<span class="wtch-quickbar__label"></span>' +
+              '<span class="wtch-quickbar__value"></span>' +
+            '</span>' +
           '</div>'
         );
 
@@ -771,24 +898,61 @@
         return $item;
       }
 
+      // Обновляет только подписи и видимость кнопок в уже построенной
+      // панели — вызывается часто (при каждой мутации DOM и при каждом
+      // обновлении кэша доступностей), поэтому ничего не пересоздаёт.
+      function updateBar($wrap) {
+        if (!$wrap || !$wrap.length) return;
+
+        var caps = wtchGetCapabilities();
+        var isSeries = wtchIsSeries();
+
+        // Пока реальные возможности источника ещё не известны (экран
+        // "Фильтр" ни разу не открывался в этом сеансе для этого
+        // источника) — не прячем кнопку заранее: лучше один раз показать
+        // лишнюю, чем не показать нужную. Как только кэш заполнится,
+        // панель сама подстроится.
+        var showSeason = isSeries && (!caps || caps.season !== false);
+        var showVoice = !caps || caps.voice !== false;
+
+        $wrap.find('[data-wtch-kind="season"]').toggleClass('hide', !showSeason);
+        $wrap.find('[data-wtch-kind="voice"]').toggleClass('hide', !showVoice);
+
+        $wrap.find('[data-wtch-kind="source"] .wtch-quickbar__value').text(currentSourceLabel());
+      }
+
       function buildBar($bar) {
-        if ($bar.parent().find('.wtch-quickbar').length) return;
+        var $existing = $bar.parent().find('.wtch-quickbar');
+
+        if ($existing.length) {
+          updateBar($existing);
+          return;
+        }
 
         var $wrap = $('<div class="wtch-quickbar"></div>');
 
         $wrap.append(buildItem('source', Lampa.Lang.translate('settings_rest_source') || 'Источник', openSource));
         $wrap.append(buildItem('season', Lampa.Lang.translate('torrent_serial_season') || 'Сезон', openSeason));
         $wrap.append(buildItem('voice', Lampa.Lang.translate('torrent_parser_voice') || 'Озвучка', openVoice));
-        $wrap.append(buildItem('quality', Lampa.Lang.translate('settings_video_quality') || 'Качество', openQuality));
 
         $bar.after($wrap);
+
+        updateBar($wrap);
       }
+
+      // Как только installSourceFilterShortcut() узнаёт реальные
+      // возможности источника (открыв экран "Фильтр"), сразу подстраиваем
+      // уже построенную панель — не нужно ждать следующей мутации DOM.
+      wtchOnCapabilityUpdate = function () {
+        if (!isSourceComponentActive()) return;
+        updateBar($(wtchActiveRoot()).find('.wtch-quickbar'));
+      };
 
       var observer = new MutationObserver(function () {
         if (!isSourceComponentActive()) return;
 
-        var root = activeRoot();
-        var btns = findFilterButtons(root);
+        var root = wtchActiveRoot();
+        var btns = wtchFindFilterButtons(root);
 
         if (!btns) return;
 
@@ -803,7 +967,6 @@
       });
     });
   }
-
 
   // =========================================================
   // 5. Загружаем WTCH
