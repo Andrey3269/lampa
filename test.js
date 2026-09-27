@@ -238,7 +238,7 @@
           continue;
         }
 
-        var watchBtn = parent.querySelector('.button--play');
+        var watchBtn = scope.querySelector('.button--play');
 
         wtchLog('watchBtn found =', !!watchBtn, watchBtn ? watchBtn.outerHTML : null);
 
