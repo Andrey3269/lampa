@@ -247,6 +247,8 @@
 
               removeUnwantedUI(root);
 
+              mergeWatchButtons(root);
+
             }, 50);
           }
         });
@@ -261,6 +263,7 @@
       window.lampa_wtch_unified_observer =
         new MutationObserver(function () {
           removeUnwantedUI(document);
+          mergeWatchButtons(document);
         });
 
       safe(function () {
@@ -273,6 +276,79 @@
         );
       });
     }
+  }
+
+  // =========================================================
+  // 4.4. Объединяем кнопки "Смотреть" и "WTCH" в одну
+  // =========================================================
+  //
+  // Родная кнопка Lampa "Смотреть" открывает панель выбора
+  // источника, но т.к. WTCH регистрируется не как источник,
+  // а как отдельная кнопка, эта панель оказывается пустой.
+  // Рабочая кнопка - именно WTCH. Поэтому прячем WTCH и
+  // "пробрасываем" клик со "Смотреть" на неё - визуально
+  // остаётся одна кнопка "Смотреть", а по факту работает WTCH.
+
+  function mergeWatchButtons(root) {
+    var scope = root || document;
+
+    safe(function () {
+      var buttons = scope.querySelectorAll(
+        '.full-start__button, .selector'
+      );
+
+      var watchBtn = null;
+      var wtchBtn = null;
+
+      for (var i = 0; i < buttons.length; i++) {
+        var text = (buttons[i].textContent || '')
+          .replace(/\s+/g, ' ')
+          .trim()
+          .toLowerCase();
+
+        if (!watchBtn && (text === 'смотреть' || text === 'watch')) {
+          watchBtn = buttons[i];
+        }
+
+        if (!wtchBtn && text.indexOf('wtch') !== -1) {
+          wtchBtn = buttons[i];
+        }
+      }
+
+      if (!watchBtn || !wtchBtn) return;
+      if (watchBtn === wtchBtn) return;
+      if (watchBtn.getAttribute('data-wtch-merged') === '1') return;
+
+      watchBtn.setAttribute('data-wtch-merged', '1');
+
+      // Прячем отдельную кнопку WTCH
+      wtchBtn.style.display = 'none';
+
+      // Перехватываем клик/выбор пультом на "Смотреть"
+      // и передаём его настоящей кнопке WTCH
+      watchBtn.addEventListener(
+        'click',
+        function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+
+          if (e.stopImmediatePropagation) {
+            e.stopImmediatePropagation();
+          }
+
+          safe(function () {
+            if (window.$ && typeof window.$ === 'function') {
+              $(wtchBtn).trigger('hover:enter');
+            }
+          });
+
+          safe(function () {
+            wtchBtn.click();
+          });
+        },
+        true
+      );
+    });
   }
 
   // =========================================================
