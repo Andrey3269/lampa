@@ -111,9 +111,7 @@
 
     // Дополнительная очистка по названию кнопки
     safe(function () {
-      var buttons = scope.querySelectorAll(
-        '.full-start__button, .selector'
-      );
+      var buttons = scope.querySelectorAll('.full-start__button');
 
       for (var i = 0; i < buttons.length; i++) {
         var text = (buttons[i].textContent || '')
@@ -305,9 +303,7 @@
     var scope = root || document;
 
     safe(function () {
-      var buttons = scope.querySelectorAll(
-        '.full-start__button, .selector'
-      );
+      var buttons = scope.querySelectorAll('.full-start__button');
 
       for (var i = 0; i < buttons.length; i++) {
         var el = buttons[i];
