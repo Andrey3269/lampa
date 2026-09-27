@@ -157,6 +157,71 @@
   }
 
   // =========================================================
+  // 3.5. Отключаем баннер Showy PRO и всплывающие предложения
+  //      подписки (ShowyMarketingRuntime / ShowyProEntryBanner)
+  // =========================================================
+  //
+  // online.js при старте делает:
+  //   if (window.ShowyMarketingRuntime) return;
+  //   if (window.ShowyProEntryBanner) return;
+  // Если эти имена уже заняты "пустышками" до его загрузки —
+  // модули маркетинга/баннера не инициализируются вообще:
+  // ни сетевых запросов на 87.120.126.125:8001, ни QR-баннера,
+  // ни попапов "Пробный период закончился" / "Персональное предложение".
+  // Остальной код (поиск источников, плеер, торренты) уже готов
+  // к их отсутствию и продолжает работать как обычно.
+
+  function installShowyProGuards() {
+    if (window.lampa_wtch_showy_guard_installed) return;
+    window.lampa_wtch_showy_guard_installed = true;
+
+    safe(function () {
+      if (!window.ShowyMarketingRuntime) {
+        window.ShowyMarketingRuntime = {
+          start: function () {},
+          context: function () {},
+          trackLinkResolved: function () {},
+          createWtchInvoice: function () {
+            return false;
+          },
+          registerSourceAdapter: function () {
+            return false;
+          },
+          sourceBase: function (base) {
+            return base;
+          },
+          rewriteSourceUrl: function (url) {
+            return url;
+          },
+          ensureInlinePro: function (pro, success) {
+            if (typeof success === 'function') {
+              success({ base: '', verified: false, changed: false });
+            }
+          },
+          isInlineProActive: function () {
+            return false;
+          }
+        };
+      }
+    });
+
+    safe(function () {
+      if (!window.ShowyProEntryBanner) {
+        window.ShowyProEntryBanner = {
+          attach: function () {
+            return {
+              mount: function () {},
+              destroy: function () {},
+              ensure: function () {}
+            };
+          },
+          version: 'disabled-by-guard'
+        };
+      }
+    });
+  }
+
+  // =========================================================
   // 4. Следим за изменением интерфейса Lampa
   // =========================================================
 
@@ -292,6 +357,8 @@
   function start() {
 
     injectCSS();
+
+    installShowyProGuards();
 
     installUiCleaner();
 
