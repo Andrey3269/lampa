@@ -247,8 +247,6 @@
 
               removeUnwantedUI(root);
 
-              unifyWatchButton(root);
-
             }, 50);
           }
         });
@@ -263,7 +261,6 @@
       window.lampa_wtch_unified_observer =
         new MutationObserver(function () {
           removeUnwantedUI(document);
-          unifyWatchButton(document);
         });
 
       safe(function () {
@@ -276,81 +273,6 @@
         );
       });
     }
-  }
-
-  // =========================================================
-  // 4.4. Объединяем кнопки "Смотреть" и "WTCH" в одну
-  // =========================================================
-  //
-  // По исходнику wtch.ch/online.js кнопка WTCH - это отдельный
-  // элемент ".wtch--button" со своим собственным обработчиком
-  // hover:enter (открывает поиск WTCH напрямую). Родная кнопка
-  // Lampa "Смотреть" с ней никак не связана - открывает свою
-  // панель "Источник", которая всегда пустая, и сама по себе
-  // нестабильна (пропадает после закрытия панели / после
-  // возврата с "назад").
-  //
-  // Поэтому НЕ трогаем обработчик клика WTCH вообще (он и так
-  // всегда работает) - просто прячем родную "Смотреть" и
-  // меняем надпись у кнопки WTCH на "Смотреть". Так поведение
-  // при клике остаётся ровно таким же надёжным, как у WTCH,
-  // а выглядит это как одна-единственная кнопка "Смотреть".
-  //
-  // Функция ничего не "запоминает" и не работает "один раз" -
-  // она перечитывает обе кнопки при каждом вызове, поэтому не
-  // зависит от того, пересоздаёт ли Lampa эти элементы заново
-  // при переходах между экранами.
-
-  function unifyWatchButton(root) {
-    var scope = root || document;
-
-    safe(function () {
-      var buttons = scope.querySelectorAll(
-        '.full-start__button, .selector'
-      );
-
-      for (var i = 0; i < buttons.length; i++) {
-        var el = buttons[i];
-
-        var isWtch =
-          (el.className || '').toString().indexOf('wtch--button') !== -1;
-
-        var text = (el.textContent || '')
-          .replace(/\s+/g, ' ')
-          .trim()
-          .toLowerCase();
-
-        if (!isWtch && text.indexOf('wtch') !== -1) {
-          isWtch = true;
-        }
-
-        if (isWtch) {
-          // Меняем подпись WTCH -> "Смотреть".
-          // Обработчик клика (hover:enter / click) не трогаем -
-          // он висит на самом элементе el и продолжает работать.
-          safe(function () {
-            var label = el.querySelector('span');
-
-            if (label && label.textContent !== 'Смотреть') {
-              label.textContent = 'Смотреть';
-            }
-          });
-
-          continue;
-        }
-
-        var isNativeWatch =
-          text === 'смотреть' ||
-          text === 'watch' ||
-          text === 'продолжить' ||
-          text === 'continue';
-
-        if (isNativeWatch) {
-          // Родная кнопка ненадёжна и ведёт в пустую панель - прячем
-          el.style.display = 'none';
-        }
-      }
-    });
   }
 
   // =========================================================
