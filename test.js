@@ -4,7 +4,7 @@
   if (window.lampa_wtch_unified_v1) return;
   window.lampa_wtch_unified_v1 = true;
 
-  var VERSION = '1.3.0';
+  var VERSION = '1.4.0';
 
   // Это сам JS-скрипт WTCH.
   // Ничего к URL не добавляем.
@@ -82,14 +82,7 @@
       '[data-action="shots"]',
       '[data-action="shorts"]',
 
-      // ВАЖНО: ".view--torrent" (в единственном числе) сюда
-      // намеренно НЕ включаем. WTCH при каждом открытии карточки
-      // заново ищет именно этот элемент, чтобы понять, куда
-      // вставить свою кнопку (e.render.after(btn) в online.js).
-      // Если физически удалить его из DOM, WTCH просто не найдёт
-      // место для вставки при повторном открытии карточки, и его
-      // кнопка перестанет появляться. Визуально он и так скрыт
-      // через injectCSS (display:none) - этого достаточно.
+      '.view--torrent',
       '.view--torrents',
       '.torrent-view',
       '.torrent-view-button',
@@ -118,7 +111,9 @@
 
     // Дополнительная очистка по названию кнопки
     safe(function () {
-      var buttons = scope.querySelectorAll('.full-start__button');
+      var buttons = scope.querySelectorAll(
+        '.full-start__button, .selector'
+      );
 
       for (var i = 0; i < buttons.length; i++) {
         var text = (buttons[i].textContent || '')
@@ -134,6 +129,204 @@
           buttons[i].remove();
         }
       }
+    });
+  }
+
+
+  // =========================================================
+  // 2.5. Превращаем кнопку WTCH в основную кнопку "Смотреть"
+  // =========================================================
+
+  function normalizedButtonText(node) {
+    return safe(function () {
+      return (node.textContent || '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toLowerCase();
+    }) || '';
+  }
+
+  function isWtchButton(node) {
+    return /\bwtch\b/i.test(normalizedButtonText(node));
+  }
+
+  function isWatchButton(node) {
+    var text = normalizedButtonText(node);
+    return text === 'смотреть' || text === 'watch';
+  }
+
+  function findWtchButton(root) {
+    var scope = root || document;
+
+    var nodes = safe(function () {
+      return scope.querySelectorAll(
+        '.full-start__button, .button, .selector, button, [role="button"]'
+      );
+    }) || [];
+
+    for (var i = 0; i < nodes.length; i++) {
+      if (
+        !nodes[i].getAttribute('data-lampa-wtch-watch-replaced') &&
+        isWtchButton(nodes[i])
+      ) {
+        return nodes[i];
+      }
+    }
+
+    return null;
+  }
+
+  function findNativeWatchButton(wtchButton, root) {
+    var scope = root || document;
+    var candidates = [];
+
+    function collect(container) {
+      if (!container) return;
+
+      safe(function () {
+        var nodes = container.querySelectorAll(
+          '.full-start__button, .button, .selector, button, [role="button"]'
+        );
+
+        for (var i = 0; i < nodes.length; i++) {
+          var node = nodes[i];
+
+          if (
+            node !== wtchButton &&
+            !node.getAttribute('data-lampa-wtch-watch-replaced') &&
+            !node.getAttribute('data-lampa-wtch-native-hidden') &&
+            isWatchButton(node)
+          ) {
+            candidates.push(node);
+          }
+        }
+      });
+    }
+
+    var container = safe(function () {
+      return wtchButton.closest(
+        '.full-start__buttons, .full-start__buttons-line, ' +
+        '.full-start__buttons-container, .full-start__actions'
+      );
+    });
+
+    if (container) collect(container);
+
+    if (!candidates.length) {
+      var fullStart = safe(function () {
+        return wtchButton.closest('.full-start');
+      });
+
+      collect(fullStart || scope);
+    }
+
+    if (!candidates.length) return null;
+
+    for (var j = 0; j < candidates.length; j++) {
+      if (candidates[j].querySelector('svg')) {
+        return candidates[j];
+      }
+    }
+
+    return candidates[0];
+  }
+
+  function replaceWtchButton(root) {
+    var scope = root || document;
+
+    safe(function () {
+      var wtchButton = findWtchButton(scope);
+
+      if (!wtchButton) return;
+
+      var nativeWatchButton = findNativeWatchButton(
+        wtchButton,
+        scope
+      );
+
+      if (!nativeWatchButton) return;
+
+      // Переносим SVG стандартной кнопки "Смотреть".
+      var nativeSvg = nativeWatchButton.querySelector('svg');
+
+      if (nativeSvg) {
+        var oldSvg = wtchButton.querySelector('svg');
+
+        if (oldSvg) {
+          oldSvg.replaceWith(nativeSvg.cloneNode(true));
+        } else {
+          wtchButton.insertBefore(
+            nativeSvg.cloneNode(true),
+            wtchButton.firstChild
+          );
+        }
+      }
+
+      // Меняем подпись WTCH -> Смотреть, не затрагивая SVG.
+      var replacedText = false;
+
+      var walker = document.createTreeWalker(
+        wtchButton,
+        NodeFilter.SHOW_TEXT,
+        null
+      );
+
+      var textNodes = [];
+      var current;
+
+      while ((current = walker.nextNode())) {
+        if (
+          current.parentElement &&
+          !current.parentElement.closest('svg') &&
+          /\bwtch\b/i.test(current.nodeValue || '')
+        ) {
+          textNodes.push(current);
+        }
+      }
+
+      for (var i = 0; i < textNodes.length; i++) {
+        textNodes[i].nodeValue = textNodes[i].nodeValue.replace(
+          /wtch/ig,
+          'Смотреть'
+        );
+
+        replacedText = true;
+      }
+
+      if (!replacedText) {
+        var labelNodes = wtchButton.querySelectorAll(
+          'span, div, b, strong, em, small'
+        );
+
+        for (var k = 0; k < labelNodes.length; k++) {
+          if (
+            !labelNodes[k].querySelector('svg') &&
+            /\bwtch\b/i.test(
+              (labelNodes[k].textContent || '').trim()
+            )
+          ) {
+            labelNodes[k].textContent = 'Смотреть';
+            break;
+          }
+        }
+      }
+
+      wtchButton.setAttribute(
+        'data-lampa-wtch-watch-replaced',
+        '1'
+      );
+
+      // Оригинальная кнопка "Смотреть" исчезает из layout.
+      nativeWatchButton.setAttribute(
+        'data-lampa-wtch-native-hidden',
+        '1'
+      );
+
+      nativeWatchButton.style.setProperty(
+        'display',
+        'none',
+        'important'
+      );
     });
   }
 
@@ -168,6 +361,7 @@
 
   function installShowyProGuards() {
     if (window.lampa_wtch_showy_guard_installed) return;
+
     window.lampa_wtch_showy_guard_installed = true;
 
     safe(function () {
@@ -176,23 +370,33 @@
           start: function () {},
           context: function () {},
           trackLinkResolved: function () {},
+
           createWtchInvoice: function () {
             return false;
           },
+
           registerSourceAdapter: function () {
             return false;
           },
+
           sourceBase: function (base) {
             return base;
           },
+
           rewriteSourceUrl: function (url) {
             return url;
           },
+
           ensureInlinePro: function (pro, success) {
             if (typeof success === 'function') {
-              success({ base: '', verified: false, changed: false });
+              success({
+                base: '',
+                verified: false,
+                changed: false
+              });
             }
           },
+
           isInlineProActive: function () {
             return false;
           }
@@ -210,6 +414,7 @@
               ensure: function () {}
             };
           },
+
           version: 'disabled-by-guard'
         };
       }
@@ -252,7 +457,8 @@
 
               removeUnwantedUI(root);
 
-              unifyWatchButton(root);
+              replaceWtchButton(root);
+              replaceWtchButton(document);
 
             }, 50);
           }
@@ -268,7 +474,7 @@
       window.lampa_wtch_unified_observer =
         new MutationObserver(function () {
           removeUnwantedUI(document);
-          unifyWatchButton(document);
+          replaceWtchButton(document);
         });
 
       safe(function () {
@@ -284,119 +490,6 @@
   }
 
   // =========================================================
-  // 4.4. Объединяем кнопки "Смотреть" и "WTCH" в одну
-  // =========================================================
-  //
-  // По исходнику wtch.ch/online.js кнопка WTCH - это отдельный
-  // элемент ".wtch--button" со своим собственным обработчиком
-  // hover:enter (открывает поиск WTCH напрямую). Родная кнопка
-  // Lampa "Смотреть" с ней никак не связана - открывает свою
-  // панель "Источник", которая всегда пустая, и сама по себе
-  // нестабильна (пропадает после закрытия панели / после
-  // возврата с "назад").
-  //
-  // Поэтому НЕ трогаем обработчик клика WTCH вообще (он и так
-  // всегда работает) - просто прячем родную "Смотреть" и
-  // меняем надпись у кнопки WTCH на "Смотреть". Так поведение
-  // при клике остаётся ровно таким же надёжным, как у WTCH,
-  // а выглядит это как одна-единственная кнопка "Смотреть".
-  //
-  // Функция ничего не "запоминает" и не работает "один раз" -
-  // она перечитывает обе кнопки при каждом вызове, поэтому не
-  // зависит от того, пересоздаёт ли Lampa эти элементы заново
-  // при переходах между экранами.
-
-  function unifyWatchButton(root) {
-    var scope = root || document;
-
-    safe(function () {
-      var buttons = scope.querySelectorAll('.full-start__button');
-      var wtchKept = false;
-
-      for (var i = 0; i < buttons.length; i++) {
-        var el = buttons[i];
-
-        var isWtch =
-          (el.className || '').toString().indexOf('wtch--button') !== -1;
-
-        var text = (el.textContent || '')
-          .replace(/\s+/g, ' ')
-          .trim()
-          .toLowerCase();
-
-        if (!isWtch && text.indexOf('wtch') !== -1) {
-          isWtch = true;
-        }
-
-        if (isWtch) {
-          if (wtchKept) {
-            // У WTCH своя проверка "кнопка уже добавлена" по факту
-            // не работает (ищет среди потомков ".view--torrent",
-            // а кнопка вставляется рядом с ним, а не внутрь) -
-            // поэтому при повторных открытиях карточки могут
-            // накопиться дубликаты. Лишние копии просто убираем,
-            // оставляем только самую первую.
-            safe(function () {
-              if (el.parentNode) {
-                el.parentNode.removeChild(el);
-              }
-            });
-
-            continue;
-          }
-
-          wtchKept = true;
-
-          // Меняем подпись WTCH -> "Смотреть".
-          // Обработчик клика (hover:enter / click) не трогаем -
-          // он висит на самом элементе el и продолжает работать.
-          // Ищем текстовый узел напрямую (а не конкретный тег),
-          // чтобы не зависеть от точной разметки кнопки.
-          safe(function () {
-            var walker = document.createTreeWalker(
-              el,
-              NodeFilter.SHOW_TEXT,
-              null,
-              false
-            );
-
-            var node;
-
-            while ((node = walker.nextNode())) {
-              var value = (node.nodeValue || '').trim();
-
-              if (value && value.toLowerCase().indexOf('wtch') !== -1) {
-                node.nodeValue = 'Смотреть';
-              }
-            }
-          });
-
-          continue;
-        }
-
-        var isNativeWatch =
-          text === 'смотреть' ||
-          text === 'watch' ||
-          text === 'продолжить' ||
-          text === 'continue';
-
-        if (isNativeWatch) {
-          // Родная кнопка ненадёжна, ведёт в пустую панель, и
-          // если просто прятать её (display:none), Lampa всё
-          // равно может ставить на неё фокус по умолчанию при
-          // открытии карточки - а он окажется "в никуда".
-          // Поэтому удаляем элемент из DOM полностью.
-          safe(function () {
-            if (el.parentNode) {
-              el.parentNode.removeChild(el);
-            }
-          });
-        }
-      }
-    });
-  }
-
-  // =========================================================
   // 4.5. Встроенный редизайн плеера
   // =========================================================
   //
@@ -408,6 +501,7 @@
 
   function installPlayerSkin() {
     if (window.lampa_wtch_player_skin_installed) return;
+
     window.lampa_wtch_player_skin_installed = true;
 
     safe(function () {
@@ -427,10 +521,17 @@
         return;
       }
 
-      if (!document.getElementById('lampa_wtch_player_skin_css')) {
+      if (
+        !document.getElementById(
+          'lampa_wtch_player_skin_css'
+        )
+      ) {
         var style = document.createElement('style');
+
         style.id = 'lampa_wtch_player_skin_css';
+
         style.innerHTML = '.player-video__overlay{display:none;background:-webkit-gradient(linear,left top,left bottom,from(rgba(0,0,0,0.5)),color-stop(53%,rgba(0,0,0,0.3)),to(rgba(11,13,16,0.8)));background:-webkit-linear-gradient(top,rgba(0,0,0,0.5) 0,rgba(0,0,0,0.3) 53%,rgba(11,13,16,0.8) 100%);background:-moz-linear-gradient(top,rgba(0,0,0,0.5) 0,rgba(0,0,0,0.3) 53%,rgba(11,13,16,0.8) 100%);background:-o-linear-gradient(top,rgba(0,0,0,0.5) 0,rgba(0,0,0,0.3) 53%,rgba(11,13,16,0.8) 100%);background:linear-gradient(to bottom,rgba(0,0,0,0.5) 0,rgba(0,0,0,0.3) 53%,rgba(11,13,16,0.8) 100%);position:absolute;top:0;left:0;width:100%;height:100%}.player:not(.iptv) .player-panel,.player:not(.iptv) .player-info,.player:not(.iptv) .player-footer{background:transparent !important;-webkit-backdrop-filter:unset !important;backdrop-filter:unset !important}.player:not(.iptv) .player-panel__body,.player:not(.iptv) .player-info__body,.player:not(.iptv) .player-footer__body{padding:0}.player:not(.iptv) .player-footer__row{padding:0}.player:not(.iptv) .head-backward{display:none !important}.player:not(.iptv) .player-info__body{padding-left:0 !important;position:relative}.player:not(.iptv) .player-info__name{font-size:1.2em;text-shadow:0 0 .2em rgba(0,0,0,0.5)}.player:not(.iptv) .player-info__title{font-size:2.4em;font-weight:600;line-height:1.4;width:60%;text-shadow:0 0 .2em rgba(0,0,0,0.5);overflow:hidden;-o-text-overflow:\'.\';text-overflow:\'.\';display:-webkit-box;-webkit-line-clamp:2;line-clamp:2;-webkit-box-orient:vertical}.player:not(.iptv) .player-info__values{text-shadow:0 0 .2em rgba(0,0,0,0.5)}.player:not(.iptv) .player-info__values .value--name span{font-weight:600}.player:not(.iptv) .player-info__time{position:absolute;top:.8em;right:0}.player:not(.iptv) .player-panel .button{padding:.9em;width:3em;height:3em}.player:not(.iptv) .player-panel .button.animate-trigger-enter{-webkit-animation:animation-trigger-enter .2s forwards;-moz-animation:animation-trigger-enter .2s forwards;-o-animation:animation-trigger-enter .2s forwards;animation:animation-trigger-enter .2s forwards}.player:not(.iptv) .player-panel .button>svg{width:1.2em;height:1.2em}.player:not(.iptv) .player-panel .button+.button{margin-left:0}.player:not(.iptv) .player-panel__playpause{margin:0;padding:1em !important}.player:not(.iptv) .player-panel__playpause:not(.focus){background:rgba(255,255,255,0.1)}.player:not(.iptv) .player-panel__quality{-webkit-border-radius:5em !important;border-radius:5em !important;padding:0 1em !important}.player:not(.iptv) .player-panel__timeline{margin-bottom:1em}.player:not(.iptv) .player-panel__timeline:not(.focus) .player-panel__position>div::after{display:none}.player:not(.iptv) .player-panel__line-one{margin-bottom:1em;position:relative;z-index:2;text-shadow:0 0 .2em rgba(0,0,0,0.5)}.player:not(.iptv) .player-panel__box-buttons{-webkit-flex-shrink:0;-ms-flex-negative:0;flex-shrink:0;display:-webkit-box;display:-webkit-flex;display:-moz-box;display:-ms-flexbox;display:flex;background:rgba(255,255,255,0.1);-webkit-border-radius:4em;border-radius:4em}.player:not(.iptv) .player-panel__box-buttons+.player-panel__box-buttons{margin-left:.5em}.player:not(.iptv) .player-panel__next,.player:not(.iptv) .player-panel__prev{padding:1.1em !important}.player:not(.iptv) .player-panel__next>svg,.player:not(.iptv) .player-panel__prev>svg{width:.8em;height:.8em}.player:not(.iptv) .player-panel__playlist{text-align:center}.player:not(.iptv) .player-panel__playlist>svg{width:1em !important}.player:not(.iptv) .player-video__paused,.player:not(.iptv) .player-video__loader{background-color:rgba(255,255,255,0.1)}.player:not(.iptv) .player-info__values .value--size span{background:rgba(255,255,255,0.1);-webkit-border-radius:1em;border-radius:1em}.player:not(.iptv).player--panel-visible .player-video__overlay{display:block;-webkit-animation:animation-opacity .3s;-moz-animation:animation-opacity .3s;-o-animation:animation-opacity .3s;animation:animation-opacity .3s}.normalization{background:rgba(255,255,255,0.1);-webkit-border-radius:1em;border-radius:1em}.normalization canvas{-webkit-border-radius:1em;border-radius:1em}body.platform--browser .player:not(.iptv) .player-panel__box-buttons,body.platform--browser .player:not(.iptv) .player-panel__playpause:not(.focus),body.platform--browser .player:not(.iptv) .player-info__values .value--size span,body.platform--nw .player:not(.iptv) .player-panel__box-buttons,body.platform--nw .player:not(.iptv) .player-panel__playpause:not(.focus),body.platform--nw .player:not(.iptv) .player-info__values .value--size span,body.glass--style.platform--apple .player:not(.iptv) .player-panel__box-buttons,body.glass--style.platform--apple .player:not(.iptv) .player-panel__playpause:not(.focus),body.glass--style.platform--apple .player:not(.iptv) .player-info__values .value--size span,body.glass--style.platform--apple_tv .player:not(.iptv) .player-panel__box-buttons,body.glass--style.platform--apple_tv .player:not(.iptv) .player-panel__playpause:not(.focus),body.glass--style.platform--apple_tv .player:not(.iptv) .player-info__values .value--size span,body.glass--style.platform--android .player:not(.iptv) .player-panel__box-buttons,body.glass--style.platform--android .player:not(.iptv) .player-panel__playpause:not(.focus),body.glass--style.platform--android .player:not(.iptv) .player-info__values .value--size span{-webkit-backdrop-filter:blur(1em);backdrop-filter:blur(1em)}body.platform--browser .normalization,body.platform--browser .player-video__paused,body.platform--browser .player-video__loader,body.platform--nw .normalization,body.platform--nw .player-video__paused,body.platform--nw .player-video__loader,body.glass--style.platform--apple .normalization,body.glass--style.platform--apple .player-video__paused,body.glass--style.platform--apple .player-video__loader,body.glass--style.platform--apple_tv .normalization,body.glass--style.platform--apple_tv .player-video__paused,body.glass--style.platform--apple_tv .player-video__loader,body.glass--style.platform--android .normalization,body.glass--style.platform--android .player-video__paused,body.glass--style.platform--android .player-video__loader{background-color:rgba(255,255,255,0.1);-webkit-backdrop-filter:blur(1em);backdrop-filter:blur(1em)}';
+
         document.head.appendChild(style);
       }
 
@@ -438,11 +539,30 @@
       var title = $('<div class="player-info__title"></div>');
       var value = $('<div class="value--name"><span></span></div>');
 
-      render.find('.player-video__display').after($('<div class="player-video__overlay"></div>'));
-      render.find('.player-panel__center').find('.button:not(.player-panel__playpause)').remove();
-      render.find('.player-panel__timeline').before(render.find('.player-panel__line-one'));
-      render.find('.player-info .player-info__line').before(title);
-      render.find('.value--size').after(value);
+      render
+        .find('.player-video__display')
+        .after(
+          $('<div class="player-video__overlay"></div>')
+        );
+
+      render
+        .find('.player-panel__center')
+        .find('.button:not(.player-panel__playpause)')
+        .remove();
+
+      render
+        .find('.player-panel__timeline')
+        .before(
+          render.find('.player-panel__line-one')
+        );
+
+      render
+        .find('.player-info .player-info__line')
+        .before(title);
+
+      render
+        .find('.value--size')
+        .after(value);
 
       var box = $('<div class="player-panel__box-buttons"></div>');
       var right_panel = render.find('.player-panel__right');
@@ -458,34 +578,70 @@
       right_panel.append(right_box_main);
 
       right_box_main.append(right_panel.find('.button'));
-      right_box_quality.append(right_panel.find('.player-panel__quality'));
-      right_box_audio.append(right_panel.find('.player-panel__flow'));
-      right_box_audio.append(right_panel.find('.player-panel__subs'));
-      right_box_audio.append(right_panel.find('.player-panel__tracks'));
+      right_box_quality.append(
+        right_panel.find('.player-panel__quality')
+      );
+
+      right_box_audio.append(
+        right_panel.find('.player-panel__flow')
+      );
+
+      right_box_audio.append(
+        right_panel.find('.player-panel__subs')
+      );
+
+      right_box_audio.append(
+        right_panel.find('.player-panel__tracks')
+      );
 
       left_panel.prepend(left_box_main);
-      left_box_main.append(left_panel.find('.button'));
 
-      Lampa.Player.listener.follow('start', function (data) {
-        var name = data.title;
-        var head = '';
+      left_box_main.append(
+        left_panel.find('.button')
+      );
 
-        if (!data.iptv) {
-          if (data.card) {
-            head = data.card.title || data.card.name;
-          } else if (Lampa.Activity.active().movie) {
-            head = Lampa.Activity.active().movie.title || Lampa.Activity.active().movie.name;
+      Lampa.Player.listener.follow(
+        'start',
+        function (data) {
+          var name = data.title;
+          var head = '';
+
+          if (!data.iptv) {
+            if (data.card) {
+              head =
+                data.card.title ||
+                data.card.name;
+            } else if (
+              Lampa.Activity.active().movie
+            ) {
+              head =
+                Lampa.Activity.active().movie.title ||
+                Lampa.Activity.active().movie.name;
+            }
           }
+
+          if (!head) head = name;
+
+          title
+            .text(head)
+            .toggleClass(
+              'hide',
+              Boolean(data.iptv)
+            );
+
+          render
+            .find('.player-info__name')
+            .toggleClass('hide', true);
+
+          value
+            .toggleClass(
+              'hide',
+              Boolean(name == head)
+            )
+            .find('span')
+            .text(name);
         }
-
-        if (!head) head = name;
-
-        title.text(head).toggleClass('hide', Boolean(data.iptv));
-
-        render.find('.player-info__name').toggleClass('hide', true);
-
-        value.toggleClass('hide', Boolean(name == head)).find('span').text(name);
-      });
+      );
     });
   }
 
@@ -570,6 +726,12 @@
     disableTorrentSetting();
 
     installPlayerSkin();
+
+    replaceWtchButton(document);
+
+    setTimeout(function () {
+      replaceWtchButton(document);
+    }, 250);
   }
 
   // =========================================================
