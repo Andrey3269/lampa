@@ -191,12 +191,6 @@
 
       wtchLog('button--play count =', playButtons.length, ', wtch--button count =', wtchButtons.length);
 
-      for (var i = 0; i < playButtons.length; i++) {
-        if (playButtons[i].style.display !== 'none') {
-          playButtons[i].style.display = 'none';
-          wtchLog('hid .button--play');
-        }
-      }
 
       for (var j = 0; j < wtchButtons.length; j++) {
         // На всякий случай возвращаем видимость, если раньше прятали
