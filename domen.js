@@ -54,6 +54,23 @@
             vertical-align: -0.25em;
             flex-shrink: 0;
         }
+        /* Кнопка перезагрузки в шапке, между уведомлениями и настройками */
+        .head__reload-btn {
+            display: -webkit-inline-box;
+            display: -webkit-inline-flex;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 1.3em;
+            height: 1.3em;
+            margin: 0 .8em;
+            cursor: pointer;
+            color: inherit;
+        }
+        .head__reload-btn svg {
+            width: 100%;
+            height: 100%;
+        }
     `;
     document.head.appendChild(style);
 
@@ -149,6 +166,46 @@
         });
     }
 
+    // Кнопка перезагрузки страницы прямо в шапке (между уведомлениями и настройками).
+    // Ставим её перед .open--settings — в стандартной шапке Lampa значок
+    // уведомлений (.notice--icon) идёт непосредственно перед настройками,
+    // так что кнопка окажется между ними.
+    function tryAddReloadHeadButton() {
+        return !!safe(function () {
+            if (document.querySelector('.head__reload-btn')) return true;
+
+            var settingsIcon = document.querySelector('.open--settings');
+            if (!settingsIcon) return false;
+
+            var btn = $(
+                '<div class="selector head__reload-btn" title="Перезагрузить страницу">' +
+                svg(ICON_RELOAD, 24) +
+                '</div>'
+            );
+
+            btn.on('hover:enter click', function () {
+                window.location.reload();
+            });
+
+            $(settingsIcon).before(btn);
+            return true;
+        });
+    }
+
+    function initReloadHeadButton() {
+        if (tryAddReloadHeadButton()) return;
+
+        // .head ещё может быть не отрисован в момент appready — пробуем
+        // ещё немного, затем прекращаем попытки.
+        var attempts = 0;
+        var timer = setInterval(function () {
+            attempts++;
+            if (tryAddReloadHeadButton() || attempts >= 40) {
+                clearInterval(timer);
+            }
+        }, 500);
+    }
+
     // 1. ПРИЁМ СИГНАЛА НА ВОЗВРАТ
     if (window.location.search.indexOf('reset_domain=1') !== -1) {
         window.localStorage.removeItem('force_lampa_run');
@@ -213,10 +270,14 @@
 
     if (window.appready) {
         init();
+        initReloadHeadButton();
     } else {
         safe(function () {
             Lampa.Listener.follow('app', function (e) {
-                if (e.type == 'ready') init();
+                if (e.type == 'ready') {
+                    init();
+                    initReloadHeadButton();
+                }
             });
         });
     }
