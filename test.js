@@ -144,34 +144,56 @@
   // и вызываем тот же Lampa.Activity.push сами — по клику/входу
   // на родную кнопку "Смотреть" (.view--online без wtch--button).
 
+  var WTCH_DEBUG = true; // поставьте false, когда всё заработает
+
+  function wtchLog() {
+    if (!WTCH_DEBUG || !window.console) return;
+    try {
+      console.log.apply(console, ['[wtch-fix]'].concat(Array.prototype.slice.call(arguments)));
+    } catch (e) {}
+  }
+
   function openWtchSearch(e) {
+    wtchLog('openWtchSearch triggered', e && e.type);
+
     if (e) {
       safe(function () { e.preventDefault(); });
       safe(function () { e.stopImmediatePropagation(); });
     }
 
-    safe(function () {
+    try {
       var movie = null;
 
-      safe(function () {
+      try {
         movie = Lampa.Activity.active().movie || Lampa.Activity.active().card;
-      });
+      } catch (err) {
+        wtchLog('ERROR getting active movie:', err);
+      }
 
-      if (!movie) return;
+      wtchLog('movie =', movie);
+
+      if (!movie) {
+        wtchLog('STOP: movie not found, nothing to search for');
+        return;
+      }
 
       var id = '';
-      safe(function () {
+      try {
         id = Lampa.Utils.hash(
           movie.number_of_seasons ? movie.original_name : movie.original_title
         );
-      });
+      } catch (err) {
+        wtchLog('ERROR hashing id:', err);
+      }
 
       var all = {};
-      safe(function () {
+      try {
         all = Lampa.Storage.get('clarification_search', '{}');
-      });
+      } catch (err) {
+        wtchLog('ERROR reading clarification_search:', err);
+      }
 
-      Lampa.Activity.push({
+      var pushData = {
         url: '',
         title: Lampa.Lang.translate('title_wtch'),
         component: 'wtch',
@@ -181,8 +203,16 @@
         movie: movie,
         page: 1,
         clarification: !!(id && all[id])
-      });
-    });
+      };
+
+      wtchLog('Lampa.Activity.push(', pushData, ')');
+
+      Lampa.Activity.push(pushData);
+
+      wtchLog('push done, no exception thrown');
+    } catch (err) {
+      wtchLog('FATAL ERROR in openWtchSearch:', err);
+    }
   }
 
   function installWtchOnWatchButton(root) {
@@ -191,17 +221,36 @@
     safe(function () {
       var wtchButtons = scope.querySelectorAll('.wtch--button');
 
+      wtchLog('found .wtch--button count =', wtchButtons.length);
+
       for (var i = 0; i < wtchButtons.length; i++) {
         var wtchBtn = wtchButtons[i];
         var parent = wtchBtn.parentNode;
 
+        wtchLog('wtch--button outerHTML:', wtchBtn.outerHTML);
+        wtchLog('parent outerHTML:', parent ? parent.outerHTML : null);
+
         // Вырезаем добавленную кнопку полностью
         wtchBtn.remove();
 
-        if (!parent) continue;
+        if (!parent) {
+          wtchLog('STOP: no parentNode for wtch--button');
+          continue;
+        }
 
         var watchBtn = parent.querySelector('.view--online:not(.wtch--button)');
-        if (!watchBtn || watchBtn.dataset.wtchBound) continue;
+
+        wtchLog('watchBtn found =', !!watchBtn, watchBtn ? watchBtn.outerHTML : null);
+
+        if (!watchBtn) {
+          wtchLog('STOP: no .view--online sibling found near removed wtch--button');
+          continue;
+        }
+
+        if (watchBtn.dataset.wtchBound) {
+          wtchLog('watchBtn already bound, skipping');
+          continue;
+        }
 
         watchBtn.dataset.wtchBound = '1';
 
@@ -214,6 +263,9 @@
         safe(function () {
           if (window.$) {
             window.$(watchBtn).off('hover:enter').on('hover:enter', openWtchSearch);
+            wtchLog('bound click + hover:enter on watchBtn');
+          } else {
+            wtchLog('window.$ (jQuery) not available, only click bound');
           }
         });
       }
