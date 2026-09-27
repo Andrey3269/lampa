@@ -4,7 +4,7 @@
   if (window.lampa_wtch_unified_v1) return;
   window.lampa_wtch_unified_v1 = true;
 
-  var VERSION = '1.4.0';
+  var VERSION = '1.5.0';
 
   // Это сам JS-скрипт WTCH.
   // Ничего к URL не добавляем.
@@ -372,24 +372,25 @@
   // 4.6. Быстрый переключатель Источник / Сезон / Озвучка
   // =========================================================
   //
-  // Идея подсмотрена в плагине-примере для компонента lampac_z:
-  // находясь внутри любого всплывающего списка (например "Фильтр"
-  // или "Озвучка"), можно одним нажатием перейти в любой другой
-  // список выбора, не возвращаясь на экран и не разыскивая нужную
-  // кнопку среди остальных.
+  // WTCH строит экран через встроенный в саму Lampa класс
+  // Lampa.Filter. Он рисует две кнопки: "Фильтр" (открывает список
+  // "Сброс / Озвучка / Сезон", класс кнопки — .filter--filter) и
+  // "Источник" (список балансеров, класс кнопки — .filter--sort,
+  // подписан через Lampa.Lang.translate('lampac_balanser')).
+  // Внутри "Фильтра" пункты "Сезон" и "Озвучка" — это вложенные
+  // списки: выбор строки открывает ещё один список поверх текущего.
   //
-  // Отличие от примера: здесь это сделано универсально — плагин
-  // сам находит на экране кнопки "Источник", "Сезон" и "Озвучка"
-  // по их подписи, без привязки к имени компонента и к точным
-  // CSS-классам конкретного онлайн-кинотеатра. Поэтому переключатель
-  // должен одинаково работать и в WTCH, и в большинстве других
-  // источников с похожим интерфейсом. Если конкретная кнопка не
-  // находится — соответствующий пункт быстрого меню просто не
-  // появляется, остальной интерфейс не ломается.
+  // Здесь в каждый из трёх списков (верхний "Фильтр", вложенный
+  // "Сезон", вложенный "Озвучка") добавляется быстрый переход в
+  // соседние разделы — без выхода на экран и без повторного поиска
+  // нужной кнопки пультом. Переход в "Источник" — прямой клик по
+  // кнопке .filter--sort (как в примере для lampac_z). Переход
+  // между "Сезон" и "Озвучка" — кнопка .filter--filter открывает
+  // верхний список, а плагин сразу же выбирает в нём нужную строку.
   //
-  // Если после установки какой-то из трёх пунктов не подхватился —
-  // скорее всего, у WTCH другая подпись на кнопке. Тогда достаточно
-  // дописать нужное слово в массив QF_KEYWORDS ниже.
+  // Всё завязано на точные названия из online.js WTCH, поэтому
+  // работает прицельно только на экране этого источника (component
+  // === 'wtch') и ничего не трогает в остальной Lampa.
 
   function installQuickFilterNav() {
     if (window.lampa_wtch_quickfilter_installed) return;
@@ -400,96 +401,10 @@
       !window.Lampa.Controller ||
       !window.Lampa.Controller.listener ||
       !window.Lampa.Template ||
+      !window.Lampa.Lang ||
       typeof window.$ === 'undefined'
     ) {
       return;
-    }
-
-    // Какие категории показывать в быстром меню.
-    // При желании можно включить качество/субтитры, поставив true.
-    var QF_ENABLED = {
-      source: true,
-      season: true,
-      voice: true,
-      quality: false,
-      subtitles: false
-    };
-
-    var QF_LABEL = {
-      source: 'Источник',
-      season: 'Сезон',
-      voice: 'Озвучка',
-      quality: 'Качество',
-      subtitles: 'Субтитры'
-    };
-
-    var QF_ICON = {
-      source: '🌐',
-      season: '🎬',
-      voice: '🎙',
-      quality: '💎',
-      subtitles: '💬'
-    };
-
-    // Ключевые слова для распознавания кнопок по их тексту.
-    // Можно дописывать свои варианты через запятую.
-    var QF_KEYWORDS = {
-      source: ['источник', 'балансер', 'провайдер', 'source', 'provider', 'balancer'],
-      season: ['сезон', 'season'],
-      voice: ['озвучка', 'перевод', 'дубляж', 'войсовер', 'voice', 'dub', 'translat'],
-      quality: ['качество', 'quality'],
-      subtitles: ['субтитры', 'subtitles', 'subs']
-    };
-
-    var QF_ORDER = ['source', 'season', 'voice', 'quality', 'subtitles'];
-
-    function qfDetect(text) {
-      var t = (text || '').toLowerCase();
-
-      for (var i = 0; i < QF_ORDER.length; i++) {
-        var key = QF_ORDER[i];
-
-        if (!QF_ENABLED[key]) continue;
-
-        var words = QF_KEYWORDS[key];
-
-        for (var j = 0; j < words.length; j++) {
-          if (t.indexOf(words[j]) !== -1) return key;
-        }
-      }
-
-      return null;
-    }
-
-    // Ищем на экране кнопки-фильтры и раскладываем их по категориям.
-    function qfFindButtons(root) {
-      var scope = root || document;
-      var found = {};
-
-      var nodes = safe(function () {
-        return scope.querySelectorAll(
-          '.simple-button--filter, .full-start__button, [data-action="filter"], .simple-button.selector'
-        );
-      }) || [];
-
-      for (var i = 0; i < nodes.length; i++) {
-        var el = nodes[i];
-
-        if (!el || el.classList.contains('hide')) continue;
-        if (el.offsetParent === null) continue;
-
-        var label = (el.textContent || '').replace(/\s+/g, ' ').trim();
-
-        if (!label) continue;
-
-        var cat = qfDetect(label);
-
-        if (cat && !found[cat]) {
-          found[cat] = { el: el, label: label };
-        }
-      }
-
-      return found;
     }
 
     function qfInjectStyle() {
@@ -506,90 +421,166 @@
       document.head.appendChild(style);
     }
 
+    // Находим кнопки "Источник" (.filter--sort) и "Фильтр" —
+    // последнюю ищем по остаточному принципу среди кнопок фильтра,
+    // исключая уже известные .filter--sort и .filter--search,
+    // на случай если явного класса .filter--filter не найдётся.
+    function qfFindButtons(root) {
+      var scope = root || document;
+      var result = {};
+
+      var sortBtn = safe(function () { return scope.querySelector('.filter--sort'); });
+
+      var filterBtn = safe(function () { return scope.querySelector('.filter--filter'); });
+
+      if (!filterBtn) {
+        filterBtn = safe(function () {
+          var candidates = scope.querySelectorAll('.simple-button--filter, [data-action="filter"]');
+          for (var i = 0; i < candidates.length; i++) {
+            var el = candidates[i];
+            if (el.classList.contains('filter--sort')) continue;
+            if (el.classList.contains('filter--search')) continue;
+            return el;
+          }
+          return null;
+        });
+      }
+
+      if (sortBtn && !sortBtn.classList.contains('hide') && sortBtn.offsetParent !== null) {
+        result.source = sortBtn;
+      }
+      if (filterBtn && !filterBtn.classList.contains('hide') && filterBtn.offsetParent !== null) {
+        result.filter = filterBtn;
+      }
+
+      return result;
+    }
+
+    // Текущее выбранное значение кнопки (например, название
+    // балансера) — в разметке Lampa.Filter лежит в <div>, подпись
+    // категории — в <span>. Если структура окажется иной, просто
+    // используем весь текст кнопки.
+    function qfButtonValue(el) {
+      var text = safe(function () { return $(el).find('div').first().text(); }) || '';
+      text = text.replace(/\s+/g, ' ').trim();
+      if (!text) text = (el.textContent || '').replace(/\s+/g, ' ').trim();
+      return text;
+    }
+
+    function qfBuildItem(title, subtitle, onEnter) {
+      var $item = Lampa.Template.get('selectbox_item', {
+        title: title,
+        subtitle: subtitle || ''
+      });
+
+      $item.addClass('qf-item');
+      $item.on('hover:enter', onEnter);
+
+      return $item;
+    }
+
+    // Открывает верхний список "Фильтр" и сразу выбирает в нём
+    // вложенный пункт по названию (Сезон / Озвучка).
+    function qfOpenFilterSubcategory(filterBtn, label) {
+      $(filterBtn).trigger('hover:enter');
+
+      setTimeout(function () {
+        safe(function () {
+          var $sb = $('body > .selectbox');
+          if (!$sb.length) return;
+
+          var needle = String(label || '').toLowerCase();
+          if (!needle) return;
+
+          var $target = $sb.find('.selectbox-item').filter(function () {
+            return $(this).text().toLowerCase().indexOf(needle) !== -1;
+          }).first();
+
+          if ($target.length) $target.trigger('hover:enter');
+        });
+      }, 0);
+    }
+
+    function qfInject($selectbox, items) {
+      if (!items.length) return;
+
+      var $list = $selectbox.find('.scroll__body').first();
+      if (!$list.length) return;
+      if ($list.find('.qf-item').length) return;
+
+      qfInjectStyle();
+
+      var $group = $();
+      for (var i = 0; i < items.length; i++) $group = $group.add(items[i]);
+      $group = $group.add('<div class="qf-divider"></div>');
+
+      var $anchor = $list.find('.selectbox-item').first();
+
+      if ($anchor.length) $anchor.before($group);
+      else $list.prepend($group);
+
+      Lampa.Controller.collectionSet($list);
+    }
+
     Lampa.Controller.listener.follow('toggle', function (event) {
       if (event.name !== 'select') return;
 
       safe(function () {
         var active = Lampa.Activity.active();
-
-        if (!active) return;
+        if (!active || active.component !== 'wtch') return;
 
         var root = document;
-
         if (active.activity && typeof active.activity.render === 'function') {
           var rendered = active.activity.render();
           if (rendered && rendered[0]) root = rendered[0];
         }
 
         var buttons = qfFindButtons(root);
-        var keys = Object.keys(buttons);
-
-        // Нет смысла показывать переключатель, если найдена только
-        // одна категория (переключаться некуда).
-        if (keys.length < 2) return;
+        if (!buttons.source && !buttons.filter) return;
 
         var $selectbox = $('body > .selectbox');
-
         if ($selectbox.length !== 1) return;
-        if ($selectbox.find('.qf-item').length) return;
 
         var $sbTitle = $selectbox.find('.selectbox__title');
-        var titleText = $sbTitle.length ? $sbTitle.text().trim() : '';
-        var currentCat = qfDetect(titleText);
+        var titleText = ($sbTitle.length ? $sbTitle.text() : '').toLowerCase().trim();
 
-        var $list = $selectbox.find('.scroll__body').first();
+        var titleFilter = String(Lampa.Lang.translate('title_filter') || '').toLowerCase();
+        var titleVoice = String(Lampa.Lang.translate('torrent_parser_voice') || '').toLowerCase();
+        var titleSeason = String(Lampa.Lang.translate('torrent_serial_season') || '').toLowerCase();
+        var labelSource = Lampa.Lang.translate('settings_rest_source') || 'Источник';
 
-        if (!$list.length) return;
+        var items = [];
 
-        var toAdd = [];
-
-        for (var i = 0; i < QF_ORDER.length; i++) {
-          var key = QF_ORDER[i];
-
-          // Не добавляем пункт, ведущий в тот же список, который
-          // уже открыт.
-          if (key === currentCat) continue;
-
-          if (buttons[key]) toAdd.push(key);
+        function addSourceItem() {
+          if (!buttons.source) return;
+          items.push(qfBuildItem(labelSource, qfButtonValue(buttons.source), function () {
+            $(buttons.source).trigger('hover:enter');
+          }));
         }
 
-        if (!toAdd.length) return;
-
-        qfInjectStyle();
-
-        var $group = $();
-
-        for (var n = 0; n < toAdd.length; n++) {
-          var k = toAdd[n];
-          var btn = buttons[k];
-
-          var $item = Lampa.Template.get('selectbox_item', {
-            title: QF_ICON[k] + ' ' + QF_LABEL[k],
-            subtitle: btn.label
-          });
-
-          $item.addClass('qf-item');
-
-          $item.on('hover:enter', (function (targetEl) {
-            return function () {
-              $(targetEl).trigger('hover:enter');
-            };
-          })(btn.el));
-
-          $group = $group.add($item);
+        if (titleText && titleFilter && titleText.indexOf(titleFilter) !== -1) {
+          // Открыт верхний список "Фильтр" — добавляем быстрый
+          // переход к источнику (Сезон/Озвучка тут и так уже видны).
+          addSourceItem();
+        } else if (titleText && titleVoice && titleText.indexOf(titleVoice) !== -1) {
+          // Открыт вложенный список "Озвучка".
+          if (buttons.filter) {
+            items.push(qfBuildItem(Lampa.Lang.translate('torrent_serial_season'), '', function () {
+              qfOpenFilterSubcategory(buttons.filter, Lampa.Lang.translate('torrent_serial_season'));
+            }));
+          }
+          addSourceItem();
+        } else if (titleText && titleSeason && titleText.indexOf(titleSeason) !== -1) {
+          // Открыт вложенный список "Сезон".
+          if (buttons.filter) {
+            items.push(qfBuildItem(Lampa.Lang.translate('torrent_parser_voice'), '', function () {
+              qfOpenFilterSubcategory(buttons.filter, Lampa.Lang.translate('torrent_parser_voice'));
+            }));
+          }
+          addSourceItem();
         }
 
-        $group = $group.add('<div class="qf-divider"></div>');
-
-        var $anchor = $list.find('.selectbox-item').first();
-
-        if ($anchor.length) {
-          $anchor.before($group);
-        } else {
-          $list.prepend($group);
-        }
-
-        Lampa.Controller.collectionSet($list);
+        if (items.length) qfInject($selectbox, items);
       });
     });
   }
