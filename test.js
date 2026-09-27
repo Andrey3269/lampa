@@ -82,7 +82,14 @@
       '[data-action="shots"]',
       '[data-action="shorts"]',
 
-      '.view--torrent',
+      // ВАЖНО: ".view--torrent" (в единственном числе) сюда
+      // намеренно НЕ включаем. WTCH при каждом открытии карточки
+      // заново ищет именно этот элемент, чтобы понять, куда
+      // вставить свою кнопку (e.render.after(btn) в online.js).
+      // Если физически удалить его из DOM, WTCH просто не найдёт
+      // место для вставки при повторном открытии карточки, и его
+      // кнопка перестанет появляться. Визуально он и так скрыт
+      // через injectCSS (display:none) - этого достаточно.
       '.view--torrents',
       '.torrent-view',
       '.torrent-view-button',
@@ -304,6 +311,7 @@
 
     safe(function () {
       var buttons = scope.querySelectorAll('.full-start__button');
+      var wtchKept = false;
 
       for (var i = 0; i < buttons.length; i++) {
         var el = buttons[i];
@@ -321,6 +329,24 @@
         }
 
         if (isWtch) {
+          if (wtchKept) {
+            // У WTCH своя проверка "кнопка уже добавлена" по факту
+            // не работает (ищет среди потомков ".view--torrent",
+            // а кнопка вставляется рядом с ним, а не внутрь) -
+            // поэтому при повторных открытиях карточки могут
+            // накопиться дубликаты. Лишние копии просто убираем,
+            // оставляем только самую первую.
+            safe(function () {
+              if (el.parentNode) {
+                el.parentNode.removeChild(el);
+              }
+            });
+
+            continue;
+          }
+
+          wtchKept = true;
+
           // Меняем подпись WTCH -> "Смотреть".
           // Обработчик клика (hover:enter / click) не трогаем -
           // он висит на самом элементе el и продолжает работать.
