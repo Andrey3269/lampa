@@ -4,7 +4,7 @@
   if (window.lampa_wtch_unified_v1) return;
   window.lampa_wtch_unified_v1 = true;
 
-  var VERSION = '1.4.0';
+  var VERSION = '1.4.1';
 
   // Это сам JS-скрипт WTCH.
   // Ничего к URL не добавляем.
@@ -132,12 +132,15 @@
     });
   }
 
-
   // =========================================================
-  // 2.5. Превращаем кнопку WTCH в основную кнопку "Смотреть"
+  // 2.5. Заменяем стандартную кнопку «Смотреть» кнопкой WTCH
+  //
+  // Важно: старую кнопку не просто прячем через display:none.
+  // У неё убираем класс selector/tabindex и aria-фокус, чтобы
+  // навигация Lampa больше никогда не выбирала её автоматически.
   // =========================================================
 
-  function normalizedButtonText(node) {
+  function buttonText(node) {
     return safe(function () {
       return (node.textContent || '')
         .replace(/\s+/g, ' ')
@@ -147,16 +150,24 @@
   }
 
   function isWtchButton(node) {
-    return /\bwtch\b/i.test(normalizedButtonText(node));
+    return /\bwtch\b/i.test(buttonText(node));
   }
 
   function isWatchButton(node) {
-    var text = normalizedButtonText(node);
+    var text = buttonText(node);
     return text === 'смотреть' || text === 'watch';
   }
 
   function findWtchButton(root) {
     var scope = root || document;
+
+    // После первого прохода надпись WTCH уже превращена в
+    // «Смотреть», поэтому ищем кнопку также по специальному маркеру.
+    var marked = safe(function () {
+      return scope.querySelector('[data-lampa-wtch-button="1"]');
+    });
+
+    if (marked) return marked;
 
     var nodes = safe(function () {
       return scope.querySelectorAll(
@@ -165,12 +176,7 @@
     }) || [];
 
     for (var i = 0; i < nodes.length; i++) {
-      if (
-        !nodes[i].getAttribute('data-lampa-wtch-watch-replaced') &&
-        isWtchButton(nodes[i])
-      ) {
-        return nodes[i];
-      }
+      if (isWtchButton(nodes[i])) return nodes[i];
     }
 
     return null;
@@ -178,10 +184,21 @@
 
   function findNativeWatchButton(wtchButton, root) {
     var scope = root || document;
+    var containers = [];
     var candidates = [];
 
-    function collect(container) {
-      if (!container) return;
+    var local = safe(function () {
+      return wtchButton && wtchButton.closest(
+        '.full-start-new__buttons, .full-start__buttons, ' +
+        '.full-start__buttons-line, .full-start__actions, .full-start'
+      );
+    });
+
+    if (local) containers.push(local);
+    containers.push(scope);
+
+    for (var c = 0; c < containers.length; c++) {
+      var container = containers[c];
 
       safe(function () {
         var nodes = container.querySelectorAll(
@@ -193,78 +210,121 @@
 
           if (
             node !== wtchButton &&
-            !node.getAttribute('data-lampa-wtch-watch-replaced') &&
-            !node.getAttribute('data-lampa-wtch-native-hidden') &&
+            !node.hasAttribute('data-lampa-wtch-native-hidden') &&
             isWatchButton(node)
           ) {
             candidates.push(node);
           }
         }
       });
+
+      if (candidates.length) break;
     }
 
-    var container = safe(function () {
-      return wtchButton.closest(
-        '.full-start__buttons, .full-start__buttons-line, ' +
-        '.full-start__buttons-container, .full-start__actions'
-      );
-    });
-
-    if (container) collect(container);
-
-    if (!candidates.length) {
-      var fullStart = safe(function () {
-        return wtchButton.closest('.full-start');
-      });
-
-      collect(fullStart || scope);
-    }
-
-    if (!candidates.length) return null;
-
+    // Если есть несколько элементов «Смотреть», предпочитаем тот,
+    // который содержит SVG — это штатная кнопка из карточки.
     for (var j = 0; j < candidates.length; j++) {
-      if (candidates[j].querySelector('svg')) {
-        return candidates[j];
-      }
+      if (candidates[j].querySelector('svg')) return candidates[j];
     }
 
-    return candidates[0];
+    return candidates[0] || null;
   }
 
-  function replaceWtchButton(root) {
+  function removeNativeFocusState(node) {
+    if (!node) return;
+
+    safe(function () {
+      node.classList.remove('focus');
+      node.classList.remove('selected');
+      node.removeAttribute('tabindex');
+      node.setAttribute('aria-hidden', 'true');
+      node.setAttribute('data-lampa-wtch-native-hidden', '1');
+      node.style.setProperty('display', 'none', 'important');
+    });
+
+    // Lampa навигирует по `.selector`; без этого класса старая кнопка
+    // перестаёт попадать в список доступных элементов.
+    safe(function () {
+      node.classList.remove('selector');
+    });
+  }
+
+  function focusWtchButton(wtchButton, root) {
+    if (!wtchButton) return;
+
+    var target = wtchButton;
+
+    safe(function () {
+      // Не даём невидимой старой кнопке остаться текущим focus.
+      var old = document.querySelector(
+        '.full-start__button[data-lampa-wtch-native-hidden="1"].focus'
+      );
+
+      if (old) {
+        old.classList.remove('focus');
+        old.blur && old.blur();
+      }
+    });
+
+    safe(function () {
+      if (typeof Navigator !== 'undefined' && Navigator.focused) {
+        Navigator.focused(target);
+        return true;
+      }
+    });
+
+    safe(function () {
+      if (
+        window.Lampa &&
+        Lampa.Controller &&
+        typeof Lampa.Controller.collectionFocus === 'function'
+      ) {
+        Lampa.Controller.collectionFocus(target, root || document);
+        return true;
+      }
+    });
+
+    // Последний fallback для старых сборок.
+    safe(function () {
+      target.classList.add('focus');
+    });
+  }
+
+  function replaceWtchButton(root, forceFocus) {
     var scope = root || document;
 
     safe(function () {
       var wtchButton = findWtchButton(scope);
-
       if (!wtchButton) return;
 
-      var nativeWatchButton = findNativeWatchButton(
-        wtchButton,
-        scope
-      );
+      // На случай, если WTCH ещё не отмечен как selector.
+      wtchButton.classList.add('selector');
+      wtchButton.removeAttribute('aria-hidden');
+      wtchButton.setAttribute('data-lampa-wtch-button', '1');
 
-      if (!nativeWatchButton) return;
+      var nativeWatchButton = findNativeWatchButton(wtchButton, scope);
 
-      // Переносим SVG стандартной кнопки "Смотреть".
-      var nativeSvg = nativeWatchButton.querySelector('svg');
+      if (nativeWatchButton) {
+        // Забираем SVG от оригинальной кнопки «Смотреть».
+        var nativeSvg = nativeWatchButton.querySelector('svg');
 
-      if (nativeSvg) {
-        var oldSvg = wtchButton.querySelector('svg');
+        if (nativeSvg) {
+          var oldSvg = wtchButton.querySelector('svg');
 
-        if (oldSvg) {
-          oldSvg.replaceWith(nativeSvg.cloneNode(true));
-        } else {
-          wtchButton.insertBefore(
-            nativeSvg.cloneNode(true),
-            wtchButton.firstChild
-          );
+          if (oldSvg) {
+            oldSvg.replaceWith(nativeSvg.cloneNode(true));
+          } else {
+            wtchButton.insertBefore(
+              nativeSvg.cloneNode(true),
+              wtchButton.firstChild
+            );
+          }
         }
+
+        removeNativeFocusState(nativeWatchButton);
       }
 
-      // Меняем подпись WTCH -> Смотреть, не затрагивая SVG.
-      var replacedText = false;
-
+      // Меняем WTCH -> Смотреть, SVG не трогаем.
       var walker = document.createTreeWalker(
         wtchButton,
         NodeFilter.SHOW_TEXT,
@@ -289,25 +349,20 @@
           /wtch/ig,
           'Смотреть'
         );
-
-        replacedText = true;
       }
 
-      if (!replacedText) {
-        var labelNodes = wtchButton.querySelectorAll(
-          'span, div, b, strong, em, small'
-        );
+      // В редких темах текст находится внутри span/div.
+      var labelNodes = wtchButton.querySelectorAll(
+        'span, div, b, strong, em, small'
+      );
 
-        for (var k = 0; k < labelNodes.length; k++) {
-          if (
-            !labelNodes[k].querySelector('svg') &&
-            /\bwtch\b/i.test(
-              (labelNodes[k].textContent || '').trim()
-            )
-          ) {
-            labelNodes[k].textContent = 'Смотреть';
-            break;
-          }
+      for (var k = 0; k < labelNodes.length; k++) {
+        if (
+          !labelNodes[k].querySelector('svg') &&
+          /\bwtch\b/i.test((labelNodes[k].textContent || '').trim())
+        ) {
+          labelNodes[k].textContent = 'Смотреть';
+          break;
         }
       }
 
@@ -316,17 +371,41 @@
         '1'
       );
 
-      // Оригинальная кнопка "Смотреть" исчезает из layout.
-      nativeWatchButton.setAttribute(
-        'data-lampa-wtch-native-hidden',
-        '1'
-      );
+      var oldFocused = safe(function () {
+        return document.querySelector(
+          '.full-start__button[data-lampa-wtch-native-hidden="1"].focus'
+        );
+      });
 
-      nativeWatchButton.style.setProperty(
-        'display',
-        'none',
-        'important'
-      );
+      // Если Lampa уже успела поставить focus на старую скрытую кнопку,
+      // сразу переносим его на WTCH. Это также работает, когда WTCH
+      // догружается чуть позже отдельным скриптом.
+      if (forceFocus || oldFocused) {
+        focusWtchButton(wtchButton, scope);
+      }
+    });
+  }
+
+  function scheduleWtchFocus(root) {
+    // Lampa сама устанавливает первоначальный focus немного позже
+    // отрисовки карточки. Поэтому несколько коротких попыток нужны,
+    // чтобы перехватить именно этот первый focus.
+    [0, 30, 80, 160, 300].forEach(function (delay) {
+      setTimeout(function () {
+        safe(function () {
+          var wtch = findWtchButton(root || document);
+          if (!wtch) return;
+
+          // Если пользователь уже успел переместить focus, не мешаем ему.
+          var oldHidden = document.querySelector(
+            '.full-start__button[data-lampa-wtch-native-hidden="1"].focus'
+          );
+
+          if (oldHidden || delay === 0) {
+            focusWtchButton(wtch, root || document);
+          }
+        });
+      }, delay);
     });
   }
 
@@ -456,9 +535,9 @@
               });
 
               removeUnwantedUI(root);
-
-              replaceWtchButton(root);
-              replaceWtchButton(document);
+              replaceWtchButton(root, true);
+              replaceWtchButton(document, false);
+              scheduleWtchFocus(root);
 
             }, 50);
           }
@@ -474,7 +553,7 @@
       window.lampa_wtch_unified_observer =
         new MutationObserver(function () {
           removeUnwantedUI(document);
-          replaceWtchButton(document);
+          replaceWtchButton(document, false);
         });
 
       safe(function () {
@@ -492,12 +571,6 @@
   // =========================================================
   // 4.5. Встроенный редизайн плеера
   // =========================================================
-  //
-  // Тёмный градиент поверх видео, перегруппировка кнопок панели
-  // управления в компактные "капсулы" и укрупнённый заголовок ролика.
-  // Как и в исходном скине: не трогаем IPTV-плеер (.player.iptv) и
-  // пропускаем мобильную платформу / уже обновлённые сборки приложения
-  // (app_digital > 328), где такой вид может быть уже встроен нативно.
 
   function installPlayerSkin() {
     if (window.lampa_wtch_player_skin_installed) return;
@@ -530,7 +603,41 @@
 
         style.id = 'lampa_wtch_player_skin_css';
 
-        style.innerHTML = '.player-video__overlay{display:none;background:-webkit-gradient(linear,left top,left bottom,from(rgba(0,0,0,0.5)),color-stop(53%,rgba(0,0,0,0.3)),to(rgba(11,13,16,0.8)));background:-webkit-linear-gradient(top,rgba(0,0,0,0.5) 0,rgba(0,0,0,0.3) 53%,rgba(11,13,16,0.8) 100%);background:-moz-linear-gradient(top,rgba(0,0,0,0.5) 0,rgba(0,0,0,0.3) 53%,rgba(11,13,16,0.8) 100%);background:-o-linear-gradient(top,rgba(0,0,0,0.5) 0,rgba(0,0,0,0.3) 53%,rgba(11,13,16,0.8) 100%);background:linear-gradient(to bottom,rgba(0,0,0,0.5) 0,rgba(0,0,0,0.3) 53%,rgba(11,13,16,0.8) 100%);position:absolute;top:0;left:0;width:100%;height:100%}.player:not(.iptv) .player-panel,.player:not(.iptv) .player-info,.player:not(.iptv) .player-footer{background:transparent !important;-webkit-backdrop-filter:unset !important;backdrop-filter:unset !important}.player:not(.iptv) .player-panel__body,.player:not(.iptv) .player-info__body,.player:not(.iptv) .player-footer__body{padding:0}.player:not(.iptv) .player-footer__row{padding:0}.player:not(.iptv) .head-backward{display:none !important}.player:not(.iptv) .player-info__body{padding-left:0 !important;position:relative}.player:not(.iptv) .player-info__name{font-size:1.2em;text-shadow:0 0 .2em rgba(0,0,0,0.5)}.player:not(.iptv) .player-info__title{font-size:2.4em;font-weight:600;line-height:1.4;width:60%;text-shadow:0 0 .2em rgba(0,0,0,0.5);overflow:hidden;-o-text-overflow:\'.\';text-overflow:\'.\';display:-webkit-box;-webkit-line-clamp:2;line-clamp:2;-webkit-box-orient:vertical}.player:not(.iptv) .player-info__values{text-shadow:0 0 .2em rgba(0,0,0,0.5)}.player:not(.iptv) .player-info__values .value--name span{font-weight:600}.player:not(.iptv) .player-info__time{position:absolute;top:.8em;right:0}.player:not(.iptv) .player-panel .button{padding:.9em;width:3em;height:3em}.player:not(.iptv) .player-panel .button.animate-trigger-enter{-webkit-animation:animation-trigger-enter .2s forwards;-moz-animation:animation-trigger-enter .2s forwards;-o-animation:animation-trigger-enter .2s forwards;animation:animation-trigger-enter .2s forwards}.player:not(.iptv) .player-panel .button>svg{width:1.2em;height:1.2em}.player:not(.iptv) .player-panel .button+.button{margin-left:0}.player:not(.iptv) .player-panel__playpause{margin:0;padding:1em !important}.player:not(.iptv) .player-panel__playpause:not(.focus){background:rgba(255,255,255,0.1)}.player:not(.iptv) .player-panel__quality{-webkit-border-radius:5em !important;border-radius:5em !important;padding:0 1em !important}.player:not(.iptv) .player-panel__timeline{margin-bottom:1em}.player:not(.iptv) .player-panel__timeline:not(.focus) .player-panel__position>div::after{display:none}.player:not(.iptv) .player-panel__line-one{margin-bottom:1em;position:relative;z-index:2;text-shadow:0 0 .2em rgba(0,0,0,0.5)}.player:not(.iptv) .player-panel__box-buttons{-webkit-flex-shrink:0;-ms-flex-negative:0;flex-shrink:0;display:-webkit-box;display:-webkit-flex;display:-moz-box;display:-ms-flexbox;display:flex;background:rgba(255,255,255,0.1);-webkit-border-radius:4em;border-radius:4em}.player:not(.iptv) .player-panel__box-buttons+.player-panel__box-buttons{margin-left:.5em}.player:not(.iptv) .player-panel__next,.player:not(.iptv) .player-panel__prev{padding:1.1em !important}.player:not(.iptv) .player-panel__next>svg,.player:not(.iptv) .player-panel__prev>svg{width:.8em;height:.8em}.player:not(.iptv) .player-panel__playlist{text-align:center}.player:not(.iptv) .player-panel__playlist>svg{width:1em !important}.player:not(.iptv) .player-video__paused,.player:not(.iptv) .player-video__loader{background-color:rgba(255,255,255,0.1)}.player:not(.iptv) .player-info__values .value--size span{background:rgba(255,255,255,0.1);-webkit-border-radius:1em;border-radius:1em}.player:not(.iptv).player--panel-visible .player-video__overlay{display:block;-webkit-animation:animation-opacity .3s;-moz-animation:animation-opacity .3s;-o-animation:animation-opacity .3s;animation:animation-opacity .3s}.normalization{background:rgba(255,255,255,0.1);-webkit-border-radius:1em;border-radius:1em}.normalization canvas{-webkit-border-radius:1em;border-radius:1em}body.platform--browser .player:not(.iptv) .player-panel__box-buttons,body.platform--browser .player:not(.iptv) .player-panel__playpause:not(.focus),body.platform--browser .player:not(.iptv) .player-info__values .value--size span,body.platform--nw .player:not(.iptv) .player-panel__box-buttons,body.platform--nw .player:not(.iptv) .player-panel__playpause:not(.focus),body.platform--nw .player:not(.iptv) .player-info__values .value--size span,body.glass--style.platform--apple .player:not(.iptv) .player-panel__box-buttons,body.glass--style.platform--apple .player:not(.iptv) .player-panel__playpause:not(.focus),body.glass--style.platform--apple .player:not(.iptv) .player-info__values .value--size span,body.glass--style.platform--apple_tv .player:not(.iptv) .player-panel__box-buttons,body.glass--style.platform--apple_tv .player:not(.iptv) .player-panel__playpause:not(.focus),body.glass--style.platform--apple_tv .player:not(.iptv) .player-info__values .value--size span,body.glass--style.platform--android .player:not(.iptv) .player-panel__box-buttons,body.glass--style.platform--android .player:not(.iptv) .player-panel__playpause:not(.focus),body.glass--style.platform--android .player:not(.iptv) .player-info__values .value--size span{-webkit-backdrop-filter:blur(1em);backdrop-filter:blur(1em)}body.platform--browser .normalization,body.platform--browser .player-video__paused,body.platform--browser .player-video__loader,body.platform--nw .normalization,body.platform--nw .player-video__paused,body.platform--nw .player-video__loader,body.glass--style.platform--apple .normalization,body.glass--style.platform--apple .player-video__paused,body.glass--style.platform--apple .player-video__loader,body.glass--style.platform--apple_tv .normalization,body.glass--style.platform--apple_tv .player-video__paused,body.glass--style.platform--apple_tv .player-video__loader,body.glass--style.platform--android .normalization,body.glass--style.platform--android .player-video__paused,body.glass--style.platform--android .player-video__loader{background-color:rgba(255,255,255,0.1);-webkit-backdrop-filter:blur(1em);backdrop-filter:blur(1em)}';
+        style.innerHTML =
+          '.player-video__overlay{display:none;background:-webkit-gradient(linear,left top,left bottom,from(rgba(0,0,0,0.5)),color-stop(53%,rgba(0,0,0,0.3)),to(rgba(11,13,16,0.8)));background:-webkit-linear-gradient(top,rgba(0,0,0,0.5) 0,rgba(0,0,0,0.3) 53%,rgba(11,13,16,0.8) 100%);background:-moz-linear-gradient(top,rgba(0,0,0,0.5) 0,rgba(0,0,0,0.3) 53%,rgba(11,13,16,0.8) 100%);background:-o-linear-gradient(top,rgba(0,0,0,0.5) 0,rgba(0,0,0,0.3) 53%,rgba(11,13,16,0.8) 100%);background:linear-gradient(to bottom,rgba(0,0,0,0.5) 0,rgba(0,0,0,0.3) 53%,rgba(11,13,16,0.8) 100%);position:absolute;top:0;left:0;width:100%;height:100%}' +
+          '.player:not(.iptv) .player-panel,.player:not(.iptv) .player-info,.player:not(.iptv) .player-footer{background:transparent !important;-webkit-backdrop-filter:unset !important;backdrop-filter:unset !important}' +
+          '.player:not(.iptv) .player-panel__body,.player:not(.iptv) .player-info__body,.player:not(.iptv) .player-footer__body{padding:0}' +
+          '.player:not(.iptv) .player-footer__row{padding:0}' +
+          '.player:not(.iptv) .head-backward{display:none !important}' +
+          '.player:not(.iptv) .player-info__body{padding-left:0 !important;position:relative}' +
+          '.player:not(.iptv) .player-info__name{font-size:1.2em;text-shadow:0 0 .2em rgba(0,0,0,0.5)}' +
+          '.player:not(.iptv) .player-info__title{font-size:2.4em;font-weight:600;line-height:1.4;width:60%;text-shadow:0 0 .2em rgba(0,0,0,0.5);overflow:hidden;-o-text-overflow:\'.\';text-overflow:\'.\';display:-webkit-box;-webkit-line-clamp:2;line-clamp:2;-webkit-box-orient:vertical}' +
+          '.player:not(.iptv) .player-info__values{text-shadow:0 0 .2em rgba(0,0,0,0.5)}' +
+          '.player:not(.iptv) .player-info__values .value--name span{font-weight:600}' +
+          '.player:not(.iptv) .player-info__time{position:absolute;top:.8em;right:0}' +
+          '.player:not(.iptv) .player-panel .button{padding:.9em;width:3em;height:3em}' +
+          '.player:not(.iptv) .player-panel .button.animate-trigger-enter{-webkit-animation:animation-trigger-enter .2s forwards;-moz-animation:animation-trigger-enter .2s forwards;-o-animation:animation-trigger-enter .2s forwards;animation:animation-trigger-enter .2s forwards}' +
+          '.player:not(.iptv) .player-panel .button>svg{width:1.2em;height:1.2em}' +
+          '.player:not(.iptv) .player-panel .button+.button{margin-left:0}' +
+          '.player:not(.iptv) .player-panel__playpause{margin:0;padding:1em !important}' +
+          '.player:not(.iptv) .player-panel__playpause:not(.focus){background:rgba(255,255,255,0.1)}' +
+          '.player:not(.iptv) .player-panel__quality{-webkit-border-radius:5em !important;border-radius:5em !important;padding:0 1em !important}' +
+          '.player:not(.iptv) .player-panel__timeline{margin-bottom:1em}' +
+          '.player:not(.iptv) .player-panel__timeline:not(.focus) .player-panel__position>div::after{display:none}' +
+          '.player:not(.iptv) .player-panel__line-one{margin-bottom:1em;position:relative;z-index:2;text-shadow:0 0 .2em rgba(0,0,0,0.5)}' +
+          '.player:not(.iptv) .player-panel__box-buttons{-webkit-flex-shrink:0;-ms-flex-negative:0;flex-shrink:0;display:-webkit-box;display:-webkit-flex;display:-moz-box;display:-ms-flexbox;display:flex;background:rgba(255,255,255,0.1);-webkit-border-radius:4em;border-radius:4em}' +
+          '.player:not(.iptv) .player-panel__box-buttons+.player-panel__box-buttons{margin-left:.5em}' +
+          '.player:not(.iptv) .player-panel__next,.player:not(.iptv) .player-panel__prev{padding:1.1em !important}' +
+          '.player:not(.iptv) .player-panel__next>svg,.player:not(.iptv) .player-panel__prev>svg{width:.8em;height:.8em}' +
+          '.player:not(.iptv) .player-panel__playlist{text-align:center}' +
+          '.player:not(.iptv) .player-panel__playlist>svg{width:1em !important}' +
+          '.player:not(.iptv) .player-video__paused,.player:not(.iptv) .player-video__loader{background-color:rgba(255,255,255,0.1)}' +
+          '.player:not(.iptv) .player-info__values .value--size span{background:rgba(255,255,255,0.1);-webkit-border-radius:1em;border-radius:1em}' +
+          '.player:not(.iptv).player--panel-visible .player-video__overlay{display:block;-webkit-animation:animation-opacity .3s;-moz-animation:animation-opacity .3s;-o-animation:animation-opacity .3s;animation:animation-opacity .3s}' +
+          '.normalization{background:rgba(255,255,255,0.1);-webkit-border-radius:1em;border-radius:1em}' +
+          '.normalization canvas{-webkit-border-radius:1em;border-radius:1em}' +
+          'body.platform--browser .player:not(.iptv) .player-panel__box-buttons,body.platform--browser .player:not(.iptv) .player-panel__playpause:not(.focus),body.platform--browser .player:not(.iptv) .player-info__values .value--size span,body.platform--nw .player:not(.iptv) .player-panel__box-buttons,body.platform--nw .player:not(.iptv) .player-panel__playpause:not(.focus),body.platform--nw .player:not(.iptv) .player-info__values .value--size span,body.glass--style.platform--apple .player:not(.iptv) .player-panel__box-buttons,body.glass--style.platform--apple .player:not(.iptv) .player-panel__playpause:not(.focus),body.glass--style.platform--apple .player:not(.iptv) .player-info__values .value--size span,body.glass--style.platform--apple_tv .player:not(.iptv) .player-panel__box-buttons,body.glass--style.platform--apple_tv .player:not(.iptv) .player-panel__playpause:not(.focus),body.glass--style.platform--apple_tv .player:not(.iptv) .player-info__values .value--size span,body.glass--style.platform--android .player:not(.iptv) .player-panel__box-buttons,body.glass--style.platform--android .player:not(.iptv) .player-panel__playpause:not(.focus),body.glass--style.platform--android .player:not(.iptv) .player-info__values .value--size span{-webkit-backdrop-filter:blur(1em);backdrop-filter:blur(1em)}' +
+          'body.platform--browser .normalization,body.platform--browser .player-video__paused,body.platform--browser .player-video__loader,body.platform--nw .normalization,body.platform--nw .player-video__paused,body.platform--nw .player-video__loader,body.glass--style.platform--apple .normalization,body.glass--style.platform--apple .player-video__paused,body.glass--style.platform--apple .player-video__loader,body.glass--style.platform--android .normalization,body.glass--style.platform--android .player-video__paused,body.glass--style.platform--android .player-video__loader{background-color:rgba(255,255,255,0.1);-webkit-backdrop-filter:blur(1em);backdrop-filter:blur(1em)}';
 
         document.head.appendChild(style);
       }
@@ -725,13 +832,9 @@
 
     disableTorrentSetting();
 
+    replaceWtchButton(document, false);
+
     installPlayerSkin();
-
-    replaceWtchButton(document);
-
-    setTimeout(function () {
-      replaceWtchButton(document);
-    }, 250);
   }
 
   // =========================================================
