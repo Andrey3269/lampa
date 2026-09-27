@@ -5745,11 +5745,15 @@ window.rch_nws[hostkey].Registry = function RchRegistry(client, startConnection)
     Lampa.Component.add('wtch', component); //Ñ‚Ð¾ Ð¶Ðµ ÑÐ°Ð¼Ð¾Ðµ
     resetTemplates();
 
+    // ПАТЧ: вместо создания отдельной кнопки ".wtch--button" вешаем
+    // открытие меню WTCH прямо на переданный элемент (у нас ниже это
+    // "Смотреть" / .button--play). Кнопка при этом больше не создаётся.
     function addButton(e) {
-      if (e.render.find('.wtch--button').length) return;
-      var btn = $(Lampa.Lang.translate(button));
-	  // //console.log(btn.clone().removeClass('focus').prop('outerHTML'))
-      btn.on('hover:enter', function() {
+      var btn = e.render;
+      if (!btn || !btn.length || btn.data('wtchBound')) return;
+      btn.data('wtchBound', true);
+
+      btn.on('hover:enter.wtch', function() {
         resetTemplates();
         Lampa.Component.add('wtch', component);
 
@@ -5768,12 +5772,11 @@ window.rch_nws[hostkey].Registry = function RchRegistry(client, startConnection)
 		  clarification: all[id] ? true : false
         });
       });
-      e.render.after(btn);
     }
     Lampa.Listener.follow('full', function(e) {
       if (e.type == 'complite') {
         addButton({
-          render: e.object.activity.render().find('.view--torrent'),
+          render: e.object.activity.render().find('.button--play'),
           movie: e.data.movie
         });
       }
@@ -5781,7 +5784,7 @@ window.rch_nws[hostkey].Registry = function RchRegistry(client, startConnection)
     try {
       if (Lampa.Activity.active().component == 'full') {
         addButton({
-          render: Lampa.Activity.active().activity.render().find('.view--torrent'),
+          render: Lampa.Activity.active().activity.render().find('.button--play'),
           movie: Lampa.Activity.active().card
         });
       }
