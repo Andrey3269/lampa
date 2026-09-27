@@ -472,12 +472,11 @@
           transform: scale(1.05);
           box-shadow: 0 0 0 .16em #7cc4ff !important;
         }
-        /* Родные кнопки "Источник" и "Фильтр" дублируют нашу панель
-           быстрого доступа снизу — прячем их визуально, как только
-           панель построена (класс навешивается в installSourceQuickBar).
-           Поиск (лупа + тег запроса) не трогаем — своей замены у него нет. */
-        .torrent-filter.wtch-native-hide .filter--sort,
-        .torrent-filter.wtch-native-hide .simple-button--filter:not(.filter--sort):not(.filter--search) {
+        /* Родная строка "Источник" / "Фильтр" / поиск (лупа + тег
+           запроса) дублирует нашу панель быстрого доступа снизу —
+           прячем её целиком, как только панель построена (класс
+           навешивается в installSourceQuickBar). */
+        .torrent-filter.wtch-native-hide {
           display: none !important;
         }
 
@@ -544,16 +543,17 @@
         }
         .wtch-quickbar__value:empty { display: none; }
         .wtch-quickbar__item.focus {
-          background: #fff; color: #0b0d10;
-          border-color: transparent;
-          transform: scale(1.06);
-          box-shadow: 0 0 0 .16em #7cc4ff, 0 .5em 1.4em rgba(0,0,0,.4);
+          background: rgba(124,196,255,.16);
+          border-color: #7cc4ff;
+          transform: scale(1.05);
+          box-shadow: 0 .5em 1.4em rgba(0,0,0,.4);
         }
         .wtch-quickbar__item.focus .wtch-quickbar__icon {
-          background: rgba(11,13,16,.1);
+          background: rgba(124,196,255,.28);
+          opacity: 1;
         }
         .wtch-quickbar__item.focus .wtch-quickbar__value {
-          opacity: .55;
+          opacity: .8;
         }
 
         /* ============================================================
@@ -585,10 +585,9 @@
           background: rgba(255,255,255,.06) !important;
         }
         .wtch-source-select .selectbox-item.focus {
-          background: #fff !important;
-          color: #0b0d10 !important;
-          transform: scale(1.02);
-          box-shadow: 0 0 0 .14em #7cc4ff, 0 .5em 1.2em rgba(0,0,0,.4) !important;
+          background: rgba(124,196,255,.14) !important;
+          transform: scale(1.015);
+          box-shadow: inset 0 0 0 .12em #7cc4ff, 0 .4em 1.1em rgba(0,0,0,.35) !important;
         }
         .wtch-source-select .selectbox-item__title {
           font-size: 1.03em !important;
@@ -600,7 +599,7 @@
           margin-top: .15em !important;
         }
         .wtch-source-select .selectbox-item.focus .selectbox-item__subtitle {
-          opacity: .55;
+          opacity: .75;
         }
         .wtch-source-select .selectbox-item__checkbox {
           -webkit-flex-shrink: 0; flex-shrink: 0;
