@@ -57,7 +57,10 @@
       .button--torrent,
 
       .full-start__button[data-subtitle*="торрент"],
-      .full-start__button[data-subtitle*="Torrent"] {
+      .full-start__button[data-subtitle*="Torrent"],
+
+      /* Родная кнопка "Смотреть" — полностью скрываем */
+      .full-start__button.button--play {
         display: none !important;
       }
     `;
@@ -133,104 +136,130 @@
   }
 
   // =========================================================
-  // 2.5. Вырезаем добавленную кнопку "Wtch" и переносим её
-  //      действие прямо на родную кнопку "Смотреть"
+  // 2.5. Скрываем родную "Смотреть" и автоматически фокусируем WTCH
   // =========================================================
   //
-  // online.js всегда создаёт кнопку с классами
-  // "full-start__button selector view--online wtch--button"
-  // и вешает на неё jQuery-событие 'hover:enter', которое пушит
-  // Lampa.Activity с component: 'wtch'. Мы вырезаем эту кнопку
-  // и вызываем тот же Lampa.Activity.push сами — по клику/входу
-  // на родную кнопку "Смотреть" (.view--online без wtch--button).
+  // WTCH оставляем в DOM и НЕ скрываем.
+  // Родная кнопка "Смотреть" (.button--play) полностью скрывается CSS.
+  // После открытия карточки WTCH получает настоящий фокус Lampa,
+  // поэтому стрелки/Enter сразу работают именно с WTCH.
 
   var WTCH_DEBUG = true; // поставьте false, когда всё заработает
 
   function wtchLog() {
     if (!WTCH_DEBUG || !window.console) return;
+
     try {
-      console.log.apply(console, ['[wtch-fix]'].concat(Array.prototype.slice.call(arguments)));
+      console.log.apply(
+        console,
+        ['[wtch-fix]'].concat(Array.prototype.slice.call(arguments))
+      );
     } catch (e) {}
   }
 
-  // Только прячем чужую кнопку (не трогаем её обработчик и не удаляем)
-  function hideWtchButtons(root) {
-    var scope = root || document;
+  function focusWtchButton(root, attempt) {
+    attempt = attempt || 0;
 
     safe(function () {
-      var wtchButtons = scope.querySelectorAll('.wtch--button');
+      var scope = root || document;
+      var wtchBtn = null;
 
-      wtchLog('found .wtch--button count =', wtchButtons.length);
+      // Сначала ищем WTCH внутри текущей карточки.
+      if (
+        scope &&
+        typeof scope.querySelector === 'function'
+      ) {
+        wtchBtn = scope.querySelector('.wtch--button');
+      } else if (
+        window.$ &&
+        scope &&
+        typeof scope.find === 'function'
+      ) {
+        var found = scope.find('.wtch--button');
 
-      for (var i = 0; i < wtchButtons.length; i++) {
-        var wtchBtn = wtchButtons[i];
-
-        if (wtchBtn.style.display !== 'none') {
-          wtchBtn.style.display = 'none';
-          wtchLog('hid wtch--button (kept in DOM, handlers untouched)');
+        if (found && found.length) {
+          wtchBtn = found[0];
         }
       }
-    });
-  }
 
-  // Один раз при старте вешаем обработчик на document (делегирование).
-  // Он сработает для ЛЮБОЙ .button--play, когда бы она ни появилась —
-  // без гонки с моментом её создания/перерисовки.
-  var wtchForwardInstalled = false;
+      // Если root не дал результат — ищем глобально.
+      if (!wtchBtn) {
+        wtchBtn = document.querySelector('.wtch--button');
+      }
 
-  function installWtchForwarding() {
-    if (wtchForwardInstalled) return;
-    wtchForwardInstalled = true;
-
-    function forwardToWtch(target) {
-      var playBtn = target && target.closest ? target.closest('.button--play') : null;
-      if (!playBtn) return;
-
-      var wtchBtn = document.querySelector('.wtch--button');
-      wtchLog('play button activated (delegated), wtch--button found =', !!wtchBtn);
-
-      if (!wtchBtn) return;
-
-      safe(function () {
-        if (window.$) {
-          window.$(wtchBtn).trigger('hover:enter');
+      if (!wtchBtn) {
+        // WTCH создаётся асинхронно после отрисовки карточки.
+        if (attempt < 12) {
+          setTimeout(function () {
+            focusWtchButton(root, attempt + 1);
+          }, 100);
         } else {
-          wtchBtn.click();
+          wtchLog('WTCH button not found after retries');
         }
-      });
-    }
 
-    document.addEventListener(
-      'click',
-      function (e) { forwardToWtch(e.target); },
-      true
-    );
-
-    // hover:enter — это jQuery-событие, которое Lampa использует
-    // для входа с пульта/клавиатуры. jQuery может быть ещё не готова
-    // в момент старта, поэтому пробуем привязаться с повтором.
-    var hoverEnterTries = 0;
-
-    function bindHoverEnter() {
-      if (window.$) {
-        window.$(document).on('hover:enter', '.button--play', function () {
-          forwardToWtch(this);
-        });
-        wtchLog('bound hover:enter delegation (jQuery ready)');
         return;
       }
 
-      hoverEnterTries++;
-      if (hoverEnterTries < 100) {
-        setTimeout(bindHoverEnter, 100);
-      } else {
-        wtchLog('GAVE UP waiting for window.$ (jQuery) to bind hover:enter');
+      wtchLog('WTCH found, focusing:', wtchBtn);
+
+      // Снимаем визуальный фокус с остальных кнопок карточки.
+      safe(function () {
+        var focused = document.querySelectorAll(
+          '.full-start__buttons .focus, .full-start-new__buttons .focus'
+        );
+
+        for (var i = 0; i < focused.length; i++) {
+          if (focused[i] !== wtchBtn) {
+            focused[i].classList.remove('focus');
+          }
+        }
+      });
+
+      // Настоящий фокус Lampa.
+      if (
+        typeof Navigator !== 'undefined' &&
+        Navigator &&
+        typeof Navigator.focused === 'function'
+      ) {
+        Navigator.focused(wtchBtn);
+        wtchLog('Navigator.focused() applied');
+      } else if (
+        window.Lampa &&
+        Lampa.Controller &&
+        typeof Lampa.Controller.collectionFocus === 'function'
+      ) {
+        Lampa.Controller.collectionFocus(
+          wtchBtn,
+          root || document
+        );
+        wtchLog('Lampa.Controller.collectionFocus() applied');
       }
-    }
 
-    safe(bindHoverEnter);
+      // Визуальный fallback для сборок без API фокуса.
+      wtchBtn.classList.add('focus');
 
-    wtchLog('installed global delegated forwarding for .button--play (click bound immediately)');
+      // Обновляем позицию скролла Lampa под активной кнопкой.
+      safe(function () {
+        if (window.$) {
+          window.$(wtchBtn).trigger('hover:focus');
+        }
+      });
+    });
+  }
+
+  function autoFocusWtch(root) {
+    // WTCH может появиться чуть позже родной карточки.
+    setTimeout(function () {
+      focusWtchButton(root, 0);
+    }, 50);
+
+    setTimeout(function () {
+      focusWtchButton(root, 0);
+    }, 250);
+
+    setTimeout(function () {
+      focusWtchButton(root, 0);
+    }, 600);
   }
 
   // =========================================================
@@ -347,7 +376,7 @@
               });
 
               removeUnwantedUI(root);
-              hideWtchButtons(root);
+              autoFocusWtch(root);
 
             }, 50);
           }
@@ -363,7 +392,6 @@
       window.lampa_wtch_unified_observer =
         new MutationObserver(function () {
           removeUnwantedUI(document);
-          hideWtchButtons(document);
         });
 
       safe(function () {
@@ -412,7 +440,9 @@
       if (!document.getElementById('lampa_wtch_player_skin_css')) {
         var style = document.createElement('style');
         style.id = 'lampa_wtch_player_skin_css';
-        style.innerHTML = '.player-video__overlay{display:none;background:-webkit-gradient(linear,left top,left bottom,from(rgba(0,0,0,0.5)),color-stop(53%,rgba(0,0,0,0.3)),to(rgba(11,13,16,0.8)));background:-webkit-linear-gradient(top,rgba(0,0,0,0.5) 0,rgba(0,0,0,0.3) 53%,rgba(11,13,16,0.8) 100%);background:-moz-linear-gradient(top,rgba(0,0,0,0.5) 0,rgba(0,0,0,0.3) 53%,rgba(11,13,16,0.8) 100%);background:-o-linear-gradient(top,rgba(0,0,0,0.5) 0,rgba(0,0,0,0.3) 53%,rgba(11,13,16,0.8) 100%);background:linear-gradient(to bottom,rgba(0,0,0,0.5) 0,rgba(0,0,0,0.3) 53%,rgba(11,13,16,0.8) 100%);position:absolute;top:0;left:0;width:100%;height:100%}.player:not(.iptv) .player-panel,.player:not(.iptv) .player-info,.player:not(.iptv) .player-footer{background:transparent !important;-webkit-backdrop-filter:unset !important;backdrop-filter:unset !important}.player:not(.iptv) .player-panel__body,.player:not(.iptv) .player-info__body,.player:not(.iptv) .player-footer__body{padding:0}.player:not(.iptv) .player-footer__row{padding:0}.player:not(.iptv) .head-backward{display:none !important}.player:not(.iptv) .player-info__body{padding-left:0 !important;position:relative}.player:not(.iptv) .player-info__name{font-size:1.2em;text-shadow:0 0 .2em rgba(0,0,0,0.5)}.player:not(.iptv) .player-info__title{font-size:2.4em;font-weight:600;line-height:1.4;width:60%;text-shadow:0 0 .2em rgba(0,0,0,0.5);overflow:hidden;-o-text-overflow:\'.\';text-overflow:\'.\';display:-webkit-box;-webkit-line-clamp:2;line-clamp:2;-webkit-box-orient:vertical}.player:not(.iptv) .player-info__values{text-shadow:0 0 .2em rgba(0,0,0,0.5)}.player:not(.iptv) .player-info__values .value--name span{font-weight:600}.player:not(.iptv) .player-info__time{position:absolute;top:.8em;right:0}.player:not(.iptv) .player-panel .button{padding:.9em;width:3em;height:3em}.player:not(.iptv) .player-panel .button.animate-trigger-enter{-webkit-animation:animation-trigger-enter .2s forwards;-moz-animation:animation-trigger-enter .2s forwards;-o-animation:animation-trigger-enter .2s forwards;animation:animation-trigger-enter .2s forwards}.player:not(.iptv) .player-panel .button>svg{width:1.2em;height:1.2em}.player:not(.iptv) .player-panel .button+.button{margin-left:0}.player:not(.iptv) .player-panel__playpause{margin:0;padding:1em !important}.player:not(.iptv) .player-panel__playpause:not(.focus){background:rgba(255,255,255,0.1)}.player:not(.iptv) .player-panel__quality{-webkit-border-radius:5em !important;border-radius:5em !important;padding:0 1em !important}.player:not(.iptv) .player-panel__timeline{margin-bottom:1em}.player:not(.iptv) .player-panel__timeline:not(.focus) .player-panel__position>div::after{display:none}.player:not(.iptv) .player-panel__line-one{margin-bottom:1em;position:relative;z-index:2;text-shadow:0 0 .2em rgba(0,0,0,0.5)}.player:not(.iptv) .player-panel__box-buttons{-webkit-flex-shrink:0;-ms-flex-negative:0;flex-shrink:0;display:-webkit-box;display:-webkit-flex;display:-moz-box;display:-ms-flexbox;display:flex;background:rgba(255,255,255,0.1);-webkit-border-radius:4em;border-radius:4em}.player:not(.iptv) .player-panel__box-buttons+.player-panel__box-buttons{margin-left:.5em}.player:not(.iptv) .player-panel__next,.player:not(.iptv) .player-panel__prev{padding:1.1em !important}.player:not(.iptv) .player-panel__next>svg,.player:not(.iptv) .player-panel__prev>svg{width:.8em;height:.8em}.player:not(.iptv) .player-panel__playlist{text-align:center}.player:not(.iptv) .player-panel__playlist>svg{width:1em !important}.player:not(.iptv) .player-video__paused,.player:not(.iptv) .player-video__loader{background-color:rgba(255,255,255,0.1)}.player:not(.iptv) .player-info__values .value--size span{background:rgba(255,255,255,0.1);-webkit-border-radius:1em;border-radius:1em}.player:not(.iptv).player--panel-visible .player-video__overlay{display:block;-webkit-animation:animation-opacity .3s;-moz-animation:animation-opacity .3s;-o-animation:animation-opacity .3s;animation:animation-opacity .3s}.normalization{background:rgba(255,255,255,0.1);-webkit-border-radius:1em;border-radius:1em}.normalization canvas{-webkit-border-radius:1em;border-radius:1em}body.platform--browser .player:not(.iptv) .player-panel__box-buttons,body.platform--browser .player:not(.iptv) .player-panel__playpause:not(.focus),body.platform--browser .player:not(.iptv) .player-info__values .value--size span,body.platform--nw .player:not(.iptv) .player-panel__box-buttons,body.platform--nw .player:not(.iptv) .player-panel__playpause:not(.focus),body.platform--nw .player:not(.iptv) .player-info__values .value--size span,body.glass--style.platform--apple .player:not(.iptv) .player-panel__box-buttons,body.glass--style.platform--apple .player:not(.iptv) .player-panel__playpause:not(.focus),body.glass--style.platform--apple .player:not(.iptv) .player-info__values .value--size span,body.glass--style.platform--apple_tv .player:not(.iptv) .player-panel__box-buttons,body.glass--style.platform--apple_tv .player:not(.iptv) .player-panel__playpause:not(.focus),body.glass--style.platform--apple_tv .player:not(.iptv) .player-info__values .value--size span,body.glass--style.platform--android .player:not(.iptv) .player-panel__box-buttons,body.glass--style.platform--android .player:not(.iptv) .player-panel__playpause:not(.focus),body.glass--style.platform--android .player:not(.iptv) .player-info__values .value--size span{-webkit-backdrop-filter:blur(1em);backdrop-filter:blur(1em)}body.platform--browser .normalization,body.platform--browser .player-video__paused,body.platform--browser .player-video__loader,body.platform--nw .normalization,body.platform--nw .player-video__paused,body.platform--nw .player-video__loader,body.glass--style.platform--apple .normalization,body.glass--style.platform--apple .player-video__paused,body.glass--style.platform--apple .player-video__loader,body.glass--style.platform--apple_tv .normalization,body.glass--style.platform--apple_tv .player-video__paused,body.glass--style.platform--apple_tv .player-video__loader,body.glass--style.platform--android .normalization,body.glass--style.platform--android .player-video__paused,body.glass--style.platform--android .player-video__loader{background-color:rgba(255,255,255,0.1);-webkit-backdrop-filter:blur(1em);backdrop-filter:blur(1em)}';
+
+        style.innerHTML = '.player-video__overlay{display:none;background:-webkit-gradient(linear,left top,left bottom,from(rgba(0,0,0,0.5)),color-stop(53%,rgba(0,0,0,0.3)),to(rgba(11,13,16,0.8)));background:-webkit-linear-gradient(top,rgba(0,0,0,0.5) 0,rgba(0,0,0,0.3) 53%,rgba(11,13,16,0.8) 100%);background:-moz-linear-gradient(top,rgba(0,0,0,0.5) 0,rgba(0,0,0,0.3) 53%,rgba(11,13,16,0.8) 100%);background:-o-linear-gradient(top,rgba(0,0,0,0.5) 0,rgba(0,0,0,0.3) 53%,rgba(11,13,16,0.8) 100%);background:linear-gradient(to bottom,rgba(0,0,0,0.5) 0,rgba(0,0,0,0.3) 53%,rgba(11,13,16,0.8) 100%);position:absolute;top:0;left:0;width:100%;height:100%}.player:not(.iptv) .player-panel,.player:not(.iptv) .player-info,.player:not(.iptv) .player-footer{background:transparent !important;-webkit-backdrop-filter:unset !important;backdrop-filter:unset !important}.player:not(.iptv) .player-panel__body,.player:not(.iptv) .player-info__body,.player:not(.iptv) .player-footer__body{padding:0}.player:not(.iptv) .player-footer__row{padding:0}.player:not(.iptv) .head-backward{display:none !important}.player:not(.iptv) .player-info__body{padding-left:0 !important;position:relative}.player:not(.iptv) .player-info__name{font-size:1.2em;text-shadow:0 0 .2em rgba(0,0,0,0.5)}.player:not(.iptv) .player-info__title{font-size:2.4em;font-weight:600;line-height:1.4;width:60%;text-shadow:0 0 .2em rgba(0,0,0,0.5);overflow:hidden;-o-text-overflow:\'.\';text-overflow:\'.\';display:-webkit-box;-webkit-line-clamp:2;line-clamp:2;-webkit-box-orient:vertical}.player:not(.iptv) .player-info__values{text-shadow:0 0 .2em rgba(0,0,0,0.5)}.player:not(.iptv) .player-info__values .value--name span{font-weight:600}.player:not(.iptv) .player-info__time{position:absolute;top:.8em;right:0}.player:not(.iptv) .player-panel .button{padding:.9em;width:3em;height:3em}.player:not(.iptv) .player-panel .button.animate-trigger-enter{-webkit-animation:animation-trigger-enter .2s forwards;-moz-animation:animation-trigger-enter .2s forwards;-o-animation:animation-trigger-enter .2s forwards;animation:animation-trigger-enter .2s forwards}.player:not(.iptv) .player-panel .button>svg{width:1.2em;height:1.2em}.player:not(.iptv) .player-panel .button+.button{margin-left:0}.player:not(.iptv) .player-panel__playpause{margin:0;padding:1em !important}.player:not(.iptv) .player-panel__playpause:not(.focus){background:rgba(255,255,255,0.1)}.player:not(.iptv) .player-panel__quality{-webkit-border-radius:5em !important;border-radius:5em !important;padding:0 1em !important}.player:not(.iptv) .player-panel__timeline{margin-bottom:1em}.player:not(.iptv) .player-panel__timeline:not(.focus) .player-panel__position>div::after{display:none}.player:not(.iptv) .player-panel__line-one{margin-bottom:1em;position:relative;z-index:2;text-shadow:0 0 .2em rgba(0,0,0,0.5)}.player:not(.iptv) .player-panel__box-buttons{-webkit-flex-shrink:0;-ms-flex-negative:0;flex-shrink:0;display:-webkit-box;display:-webkit-flex;display:-moz-box;display:-ms-flexbox;display:flex;background:rgba(255,255,255,0.1);-webkit-border-radius:4em;border-radius:4em}.player:not(.iptv) .player-panel__box-buttons+.player-panel__box-buttons{margin-left:.5em}.player:not(.iptv) .player-panel__next,.player:not(.iptv) .player-panel__prev{padding:1.1em !important}.player:not(.iptv) .player-panel__next>svg,.player:not(.iptv) .player-panel__prev>svg{width:.8em;height:.8em}.player:not(.iptv) .player-panel__playlist{text-align:center}.player:not(.iptv) .player-panel__playlist>svg{width:1em !important}.player:not(.iptv) .player-video__paused,.player:not(.iptv) .player-video__loader{background-color:rgba(255,255,255,0.1)}.player:not(.iptv) .player-info__values .value--size span{background:rgba(255,255,255,0.1);-webkit-border-radius:1em;border-radius:1em}.player:not(.iptv).player--panel-visible .player-video__overlay{display:block;-webkit-animation:animation-opacity .3s;-moz-animation:animation-opacity .3s;-o-animation:animation-opacity .3s;animation:animation-opacity .3s}.normalization{background:rgba(255,255,255,0.1);-webkit-border-radius:1em;border-radius:1em}.normalization canvas{-webkit-border-radius:1em;border-radius:1em}body.platform--browser .player:not(.iptv) .player-panel__box-buttons,body.platform--browser .player:not(.iptv) .player-panel__playpause:not(.focus),body.platform--browser .player:not(.iptv) .player-info__values .value--size span,body.platform--nw .player:not(.iptv) .player-panel__box-buttons,body.platform--nw .player:not(.iptv) .player-panel__playpause:not(.focus),body.platform--nw .player:not(.iptv) .player-info__values .value--size span,body.glass--style.platform--apple .player:not(.iptv) .player-panel__box-buttons,body.glass--style.platform--apple .player:not(.iptv) .player-panel__playpause:not(.focus),body.glass--style.platform--apple .player:not(.iptv) .player-info__values .value--size span,body.glass--style.platform--apple_tv .player:not(.iptv) .player-panel__box-buttons,body.glass--style.platform--apple_tv .player:not(.iptv) .player-panel__playpause:not(.focus),body.glass--style.platform--android .player:not(.iptv) .player-panel__box-buttons,body.glass--style.platform--android .player:not(.iptv) .player-panel__playpause:not(.focus),body.glass--style.platform--android .player:not(.iptv) .player-info__values .value--size span{-webkit-backdrop-filter:blur(1em);backdrop-filter:blur(1em)}body.platform--browser .normalization,body.platform--browser .player:not(.iptv) .player-video__paused,body.platform--browser .player:not(.iptv) .player-video__loader,body.platform--nw .normalization,body.platform--nw .player:not(.iptv) .player-video__paused,body.platform--nw .player:not(.iptv) .player-video__loader,body.glass--style.platform--apple .normalization,body.glass--style.platform--apple .player:not(.iptv) .player-video__paused,body.glass--style.platform--apple .player:not(.iptv) .player-video__loader,body.glass--style.platform--apple_tv .normalization,body.glass--style.platform--apple_tv .player:not(.iptv) .player-video__paused,body.glass--style.platform--apple_tv .player:not(.iptv) .player-video__loader,body.glass--style.platform--android .normalization,body.glass--style.platform--android .player:not(.iptv) .player-video__paused,body.glass--style.platform--android .player:not(.iptv) .player-video__loader{background-color:rgba(255,255,255,0.1);-webkit-backdrop-filter:blur(1em);backdrop-filter:blur(1em)}';
+
         document.head.appendChild(style);
       }
 
@@ -420,11 +450,22 @@
       var title = $('<div class="player-info__title"></div>');
       var value = $('<div class="value--name"><span></span></div>');
 
-      render.find('.player-video__display').after($('<div class="player-video__overlay"></div>'));
-      render.find('.player-panel__center').find('.button:not(.player-panel__playpause)').remove();
-      render.find('.player-panel__timeline').before(render.find('.player-panel__line-one'));
-      render.find('.player-info .player-info__line').before(title);
-      render.find('.value--size').after(value);
+      render.find('.player-video__display').after(
+        $('<div class="player-video__overlay"></div>')
+      );
+
+      render.find('.player-panel__center')
+        .find('.button:not(.player-panel__playpause)')
+        .remove();
+
+      render.find('.player-panel__timeline')
+        .before(render.find('.player-panel__line-one'));
+
+      render.find('.player-info .player-info__line')
+        .before(title);
+
+      render.find('.value--size')
+        .after(value);
 
       var box = $('<div class="player-panel__box-buttons"></div>');
       var right_panel = render.find('.player-panel__right');
@@ -441,9 +482,18 @@
 
       right_box_main.append(right_panel.find('.button'));
       right_box_quality.append(right_panel.find('.player-panel__quality'));
-      right_box_audio.append(right_panel.find('.player-panel__flow'));
-      right_box_audio.append(right_panel.find('.player-panel__subs'));
-      right_box_audio.append(right_panel.find('.player-panel__tracks'));
+
+      right_box_audio.append(
+        right_panel.find('.player-panel__flow')
+      );
+
+      right_box_audio.append(
+        right_panel.find('.player-panel__subs')
+      );
+
+      right_box_audio.append(
+        right_panel.find('.player-panel__tracks')
+      );
 
       left_panel.prepend(left_box_main);
       left_box_main.append(left_panel.find('.button'));
@@ -456,17 +506,26 @@
           if (data.card) {
             head = data.card.title || data.card.name;
           } else if (Lampa.Activity.active().movie) {
-            head = Lampa.Activity.active().movie.title || Lampa.Activity.active().movie.name;
+            head =
+              Lampa.Activity.active().movie.title ||
+              Lampa.Activity.active().movie.name;
           }
         }
 
         if (!head) head = name;
 
-        title.text(head).toggleClass('hide', Boolean(data.iptv));
+        title
+          .text(head)
+          .toggleClass('hide', Boolean(data.iptv));
 
-        render.find('.player-info__name').toggleClass('hide', true);
+        render
+          .find('.player-info__name')
+          .toggleClass('hide', true);
 
-        value.toggleClass('hide', Boolean(name == head)).find('span').text(name);
+        value
+          .toggleClass('hide', Boolean(name == head))
+          .find('span')
+          .text(name);
       });
     });
   }
@@ -553,7 +612,6 @@
 
     installPlayerSkin();
 
-    installWtchForwarding();
   }
 
   // =========================================================
