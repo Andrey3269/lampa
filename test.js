@@ -4,7 +4,7 @@
   if (window.lampa_wtch_unified_v1) return;
   window.lampa_wtch_unified_v1 = true;
 
-  var VERSION = '1.6.0';
+  var VERSION = '1.7.0';
 
   // Это сам JS-скрипт WTCH.
   // Ничего к URL не добавляем.
@@ -472,6 +472,14 @@
           transform: scale(1.05);
           box-shadow: 0 0 0 .16em #7cc4ff !important;
         }
+        /* Родные кнопки "Источник" и "Фильтр" дублируют нашу панель
+           быстрого доступа снизу — прячем их визуально, как только
+           панель построена (класс навешивается в installSourceQuickBar).
+           Поиск (лупа + тег запроса) не трогаем — своей замены у него нет. */
+        .torrent-filter.wtch-native-hide .filter--sort,
+        .torrent-filter.wtch-native-hide .simple-button--filter:not(.filter--sort):not(.filter--search) {
+          display: none !important;
+        }
 
         /* ============================================================
            Наша панель быстрого доступа (см. installSourceQuickBar)
@@ -805,7 +813,7 @@
   // wtch когда-нибудь переименует кнопки, модуль тихо перестанет
   // добавлять панель, ничего не сломав.
 
-    function installSourceQuickBar() {
+  function installSourceQuickBar() {
     if (window.lampa_wtch_quickbar_installed) return;
     window.lampa_wtch_quickbar_installed = true;
 
@@ -828,12 +836,57 @@
         voice: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0014 0M12 18v3" stroke-linecap="round"/></svg>'
       };
 
-      function openFilterGroup(translateKey, emptyMessage) {
+      function openSource() {
+        var btns = wtchFindFilterButtons(wtchActiveRoot());
+        if (btns && btns.sort.length) btns.sort.trigger('hover:enter');
+      }
+
+      function currentSourceLabel() {
+        return String(safe(function () {
+          var btns = wtchFindFilterButtons(wtchActiveRoot());
+          return btns && btns.sort.length ? $('div', btns.sort).text().trim() : '';
+        }) || '');
+      }
+
+      // Вместо тихого тоста или зависшего "чужого" экрана — понятное
+      // окно в том же стиле, что и остальные меню этого экрана: что
+      // именно недоступно у текущего источника + кнопка быстрого
+      // перехода к списку источников.
+      function showUnavailableWindow(title, reasonText) {
+        var sourceLabel = currentSourceLabel();
+
+        safe(function () {
+          Lampa.Select.show({
+            title: title,
+            items: [
+              {
+                title: (Lampa.Lang.translate('settings_rest_source') || 'Источник') + ': ' + (sourceLabel || '—'),
+                subtitle: reasonText,
+                wtch_role: 'info'
+              },
+              {
+                title: 'Сменить источник',
+                wtch_role: 'change_source'
+              }
+            ],
+            onSelect: function (item) {
+              Lampa.Select.close();
+
+              if (item.wtch_role === 'change_source') {
+                setTimeout(openSource, 10);
+              }
+            },
+            onBack: function () {
+              Lampa.Controller.toggle('content');
+            }
+          });
+        });
+      }
+
+      function openFilterGroup(translateKey, title, reasonText) {
         var btns = wtchFindFilterButtons(wtchActiveRoot());
         if (!btns || !btns.group.length) {
-          safe(function () {
-            Lampa.Noty.show(emptyMessage || Lampa.Lang.translate('lampac_balanser_dont_work') || 'Недоступно для этого источника');
-          });
+          showUnavailableWindow(title, reasonText);
           return;
         }
 
@@ -847,38 +900,36 @@
 
           if ($target.length) {
             $target.trigger('hover:enter');
-          } else {
-            // У этого источника такого пункта нет — не оставляем открытым
-            // "чужой" экран фильтра, а сразу закрываем и поясняем, что
-            // произошло, вместо тишины/непонятного зависшего меню.
-            safe(function () {
-              if (Lampa.Select && typeof Lampa.Select.close === 'function') Lampa.Select.close();
-            });
-            safe(function () {
-              Lampa.Noty.show(emptyMessage || 'Недоступно для этого источника');
-            });
+            return;
           }
+
+          // У этого источника такого пункта нет — не оставляем открытым
+          // "чужой" экран фильтра (это и выглядело как зависание), а
+          // закрываем его и сразу показываем понятное окно вместо него.
+          safe(function () {
+            if (Lampa.Select && typeof Lampa.Select.close === 'function') Lampa.Select.close();
+          });
+
+          setTimeout(function () {
+            showUnavailableWindow(title, reasonText);
+          }, 60);
         }, 40);
       }
 
-      function openSource() {
-        var btns = wtchFindFilterButtons(wtchActiveRoot());
-        if (btns && btns.sort.length) btns.sort.trigger('hover:enter');
-      }
-
       function openSeason() {
-        openFilterGroup('torrent_serial_season', 'У этого источника нет сезонов');
+        openFilterGroup(
+          'torrent_serial_season',
+          Lampa.Lang.translate('torrent_serial_season') || 'Сезон',
+          'У этого источника нет других сезонов'
+        );
       }
 
       function openVoice() {
-        openFilterGroup('torrent_parser_voice', 'У этого источника нет вариантов перевода');
-      }
-
-      function currentSourceLabel() {
-        return String(safe(function () {
-          var btns = wtchFindFilterButtons(wtchActiveRoot());
-          return btns && btns.sort.length ? $('div', btns.sort).text().trim() : '';
-        }) || '');
+        openFilterGroup(
+          'torrent_parser_voice',
+          Lampa.Lang.translate('torrent_parser_voice') || 'Перевод',
+          'У этого источника нет других переводов'
+        );
       }
 
       function buildItem(kind, label, action) {
@@ -899,8 +950,13 @@
       }
 
       // Обновляет только подписи и видимость кнопок в уже построенной
-      // панели — вызывается часто (при каждой мутации DOM и при каждом
-      // обновлении кэша доступностей), поэтому ничего не пересоздаёт.
+      // панели — вызывается при каждом тике наблюдателя, поэтому здесь
+      // критично не писать в DOM, если значение и так не изменилось:
+      // .text() физически пересоздаёт текстовый узел даже когда строка
+      // та же самая, а это childList-мутация — ровно то, что слушает
+      // MutationObserver ниже. Без проверки на равенство это превращается
+      // в бесконечный цикл "запись → мутация → снова запись", который и
+      // подвешивал интерфейс на этом экране.
       function updateBar($wrap) {
         if (!$wrap || !$wrap.length) return;
 
@@ -915,13 +971,24 @@
         var showSeason = isSeries && (!caps || caps.season !== false);
         var showVoice = !caps || caps.voice !== false;
 
-        $wrap.find('[data-wtch-kind="season"]').toggleClass('hide', !showSeason);
-        $wrap.find('[data-wtch-kind="voice"]').toggleClass('hide', !showVoice);
+        var $seasonItem = $wrap.find('[data-wtch-kind="season"]');
+        var $voiceItem = $wrap.find('[data-wtch-kind="voice"]');
 
-        $wrap.find('[data-wtch-kind="source"] .wtch-quickbar__value').text(currentSourceLabel());
+        if ($seasonItem.hasClass('hide') === showSeason) $seasonItem.toggleClass('hide', !showSeason);
+        if ($voiceItem.hasClass('hide') === showVoice) $voiceItem.toggleClass('hide', !showVoice);
+
+        var $value = $wrap.find('[data-wtch-kind="source"] .wtch-quickbar__value');
+        var newLabel = currentSourceLabel();
+
+        if ($value.text() !== newLabel) $value.text(newLabel);
       }
 
       function buildBar($bar) {
+        // Родные кнопки "Источник"/"Фильтр" больше не нужны на виду —
+        // ими управляет панель ниже (сами кнопки остаются в DOM и
+        // по-прежнему нажимаются программно, просто визуально скрыты).
+        $bar.addClass('wtch-native-hide');
+
         var $existing = $bar.parent().find('.wtch-quickbar');
 
         if ($existing.length) {
@@ -948,7 +1015,17 @@
         updateBar($(wtchActiveRoot()).find('.wtch-quickbar'));
       };
 
+      // Наблюдатель слушает весь документ (иначе не поймать момент, когда
+      // wtch дорисует свою панель), а это может быть очень "шумно" —
+      // тротлим тело обработчика, чтобы не гонять buildBar/updateBar на
+      // каждую мельчайшую мутацию где угодно в приложении.
+      var lastObserverRun = 0;
+
       var observer = new MutationObserver(function () {
+        var now = Date.now();
+        if (now - lastObserverRun < 150) return;
+        lastObserverRun = now;
+
         if (!isSourceComponentActive()) return;
 
         var root = wtchActiveRoot();
