@@ -4,7 +4,7 @@
   if (window.lampa_wtch_unified_v1) return;
   window.lampa_wtch_unified_v1 = true;
 
-  var VERSION = '1.4.1';
+  var VERSION = '1.4.3';
 
   // Это сам JS-скрипт WTCH.
   // Ничего к URL не добавляем.
@@ -133,14 +133,10 @@
   }
 
   // =========================================================
-  // 2.5. Заменяем стандартную кнопку «Смотреть» кнопкой WTCH
-  //
-  // Важно: старую кнопку не просто прячем через display:none.
-  // У неё убираем класс selector/tabindex и aria-фокус, чтобы
-  // навигация Lampa больше никогда не выбирала её автоматически.
+  // 2.5. WTCH вместо стандартной кнопки «Смотреть»
   // =========================================================
 
-  function buttonText(node) {
+  function getButtonText(node) {
     return safe(function () {
       return (node.textContent || '')
         .replace(/\s+/g, ' ')
@@ -150,19 +146,17 @@
   }
 
   function isWtchButton(node) {
-    return /\bwtch\b/i.test(buttonText(node));
+    return /\bwtch\b/i.test(getButtonText(node));
   }
 
   function isWatchButton(node) {
-    var text = buttonText(node);
+    var text = getButtonText(node);
     return text === 'смотреть' || text === 'watch';
   }
 
   function findWtchButton(root) {
     var scope = root || document;
 
-    // После первого прохода надпись WTCH уже превращена в
-    // «Смотреть», поэтому ищем кнопку также по специальному маркеру.
     var marked = safe(function () {
       return scope.querySelector('[data-lampa-wtch-button="1"]');
     });
@@ -183,46 +177,36 @@
   }
 
   function findNativeWatchButton(wtchButton, root) {
-    var scope = root || document;
-    var containers = [];
     var candidates = [];
+    var scope = root || document;
 
-    var local = safe(function () {
-      return wtchButton && wtchButton.closest(
+    var container = safe(function () {
+      return wtchButton.closest(
         '.full-start-new__buttons, .full-start__buttons, ' +
         '.full-start__buttons-line, .full-start__actions, .full-start'
       );
     });
 
-    if (local) containers.push(local);
-    containers.push(scope);
+    if (!container) container = scope;
 
-    for (var c = 0; c < containers.length; c++) {
-      var container = containers[c];
+    safe(function () {
+      var nodes = container.querySelectorAll(
+        '.full-start__button, .button, .selector, button, [role="button"]'
+      );
 
-      safe(function () {
-        var nodes = container.querySelectorAll(
-          '.full-start__button, .button, .selector, button, [role="button"]'
-        );
+      for (var i = 0; i < nodes.length; i++) {
+        var node = nodes[i];
 
-        for (var i = 0; i < nodes.length; i++) {
-          var node = nodes[i];
-
-          if (
-            node !== wtchButton &&
-            !node.hasAttribute('data-lampa-wtch-native-hidden') &&
-            isWatchButton(node)
-          ) {
-            candidates.push(node);
-          }
+        if (
+          node !== wtchButton &&
+          node.getAttribute('data-lampa-wtch-native-hidden') !== '1' &&
+          isWatchButton(node)
+        ) {
+          candidates.push(node);
         }
-      });
+      }
+    });
 
-      if (candidates.length) break;
-    }
-
-    // Если есть несколько элементов «Смотреть», предпочитаем тот,
-    // который содержит SVG — это штатная кнопка из карточки.
     for (var j = 0; j < candidates.length; j++) {
       if (candidates[j].querySelector('svg')) return candidates[j];
     }
@@ -230,103 +214,12 @@
     return candidates[0] || null;
   }
 
-  function removeNativeFocusState(node) {
-    if (!node) return;
+  function setWtchText(button) {
+    if (!button) return;
 
     safe(function () {
-      node.classList.remove('focus');
-      node.classList.remove('selected');
-      node.removeAttribute('tabindex');
-      node.setAttribute('aria-hidden', 'true');
-      node.setAttribute('data-lampa-wtch-native-hidden', '1');
-      node.style.setProperty('display', 'none', 'important');
-    });
-
-    // Lampa навигирует по `.selector`; без этого класса старая кнопка
-    // перестаёт попадать в список доступных элементов.
-    safe(function () {
-      node.classList.remove('selector');
-    });
-  }
-
-  function focusWtchButton(wtchButton, root) {
-    if (!wtchButton) return;
-
-    var target = wtchButton;
-
-    safe(function () {
-      // Не даём невидимой старой кнопке остаться текущим focus.
-      var old = document.querySelector(
-        '.full-start__button[data-lampa-wtch-native-hidden="1"].focus'
-      );
-
-      if (old) {
-        old.classList.remove('focus');
-        old.blur && old.blur();
-      }
-    });
-
-    safe(function () {
-      if (typeof Navigator !== 'undefined' && Navigator.focused) {
-        Navigator.focused(target);
-        return true;
-      }
-    });
-
-    safe(function () {
-      if (
-        window.Lampa &&
-        Lampa.Controller &&
-        typeof Lampa.Controller.collectionFocus === 'function'
-      ) {
-        Lampa.Controller.collectionFocus(target, root || document);
-        return true;
-      }
-    });
-
-    // Последний fallback для старых сборок.
-    safe(function () {
-      target.classList.add('focus');
-    });
-  }
-
-  function replaceWtchButton(root, forceFocus) {
-    var scope = root || document;
-
-    safe(function () {
-      var wtchButton = findWtchButton(scope);
-      if (!wtchButton) return;
-
-      // На случай, если WTCH ещё не отмечен как selector.
-      wtchButton.classList.add('selector');
-      wtchButton.removeAttribute('aria-hidden');
-      wtchButton.setAttribute('data-lampa-wtch-button', '1');
-
-      var nativeWatchButton = findNativeWatchButton(wtchButton, scope);
-
-      if (nativeWatchButton) {
-        // Забираем SVG от оригинальной кнопки «Смотреть».
-        var nativeSvg = nativeWatchButton.querySelector('svg');
-
-        if (nativeSvg) {
-          var oldSvg = wtchButton.querySelector('svg');
-
-          if (oldSvg) {
-            oldSvg.replaceWith(nativeSvg.cloneNode(true));
-          } else {
-            wtchButton.insertBefore(
-              nativeSvg.cloneNode(true),
-              wtchButton.firstChild
-            );
-          }
-        }
-
-        removeNativeFocusState(nativeWatchButton);
-      }
-
-      // Меняем WTCH -> Смотреть, SVG не трогаем.
       var walker = document.createTreeWalker(
-        wtchButton,
+        button,
         NodeFilter.SHOW_TEXT,
         null
       );
@@ -350,63 +243,243 @@
           'Смотреть'
         );
       }
+    });
 
-      // В редких темах текст находится внутри span/div.
-      var labelNodes = wtchButton.querySelectorAll(
+    // Резерв для тем, где текст лежит внутри span/div.
+    safe(function () {
+      var labels = button.querySelectorAll(
         'span, div, b, strong, em, small'
       );
 
-      for (var k = 0; k < labelNodes.length; k++) {
+      for (var i = 0; i < labels.length; i++) {
         if (
-          !labelNodes[k].querySelector('svg') &&
-          /\bwtch\b/i.test((labelNodes[k].textContent || '').trim())
+          !labels[i].querySelector('svg') &&
+          /\bwtch\b/i.test((labels[i].textContent || '').trim())
         ) {
-          labelNodes[k].textContent = 'Смотреть';
+          labels[i].textContent = 'Смотреть';
           break;
         }
       }
+    });
+  }
+
+  function focusWtchButton(button, root) {
+    if (!button) return false;
+
+    var focused = false;
+
+    // Главный способ для Lampa.
+    safe(function () {
+      if (typeof Navigator !== 'undefined' && Navigator.focused) {
+        Navigator.focused(button);
+        focused = true;
+      }
+    });
+
+    // Запасной способ для сборок, где Navigator ещё не готов.
+    if (!focused) {
+      safe(function () {
+        if (
+          window.Lampa &&
+          Lampa.Controller &&
+          typeof Lampa.Controller.collectionFocus === 'function'
+        ) {
+          Lampa.Controller.collectionFocus(button, root || document);
+          focused = true;
+        }
+      });
+    }
+
+    // В крайнем случае хотя бы ставим визуальный focus.
+    if (!focused) {
+      safe(function () {
+        button.classList.add('focus');
+        focused = true;
+      });
+    }
+
+    return focused;
+  }
+
+  function removeNativeWatchButton(nativeButton) {
+    if (!nativeButton) return;
+
+    safe(function () {
+      nativeButton.classList.remove('focus');
+      nativeButton.classList.remove('selected');
+      nativeButton.removeAttribute('tabindex');
+      nativeButton.setAttribute('aria-hidden', 'true');
+      nativeButton.setAttribute(
+        'data-lampa-wtch-native-hidden',
+        '1'
+      );
+
+      // Полностью удаляем старую кнопку из DOM,
+      // чтобы Navigator Lampa не держал её текущим selector.
+      nativeButton.remove();
+    });
+  }
+
+  function replaceWtchButton(root, focusNow) {
+    var scope = root || document;
+
+    safe(function () {
+      var wtchButton = findWtchButton(scope);
+      if (!wtchButton) return;
+
+      wtchButton.setAttribute(
+        'data-lampa-wtch-button',
+        '1'
+      );
+
+      wtchButton.classList.add('selector');
+
+      var nativeButton = findNativeWatchButton(
+        wtchButton,
+        scope
+      );
+
+      if (nativeButton) {
+        var nativeSvg = nativeButton.querySelector('svg');
+
+        // Берём SVG штатной кнопки «Смотреть».
+        if (nativeSvg) {
+          var oldSvg = wtchButton.querySelector('svg');
+
+          if (oldSvg) {
+            oldSvg.replaceWith(
+              nativeSvg.cloneNode(true)
+            );
+          } else {
+            wtchButton.insertBefore(
+              nativeSvg.cloneNode(true),
+              wtchButton.firstChild
+            );
+          }
+        }
+
+        removeNativeWatchButton(nativeButton);
+      }
+
+      setWtchText(wtchButton);
 
       wtchButton.setAttribute(
         'data-lampa-wtch-watch-replaced',
         '1'
       );
 
-      var oldFocused = safe(function () {
-        return document.querySelector(
-          '.full-start__button[data-lampa-wtch-native-hidden="1"].focus'
+      if (focusNow) {
+        focusWtchButton(
+          wtchButton,
+          scope
         );
-      });
-
-      // Если Lampa уже успела поставить focus на старую скрытую кнопку,
-      // сразу переносим его на WTCH. Это также работает, когда WTCH
-      // догружается чуть позже отдельным скриптом.
-      if (forceFocus || oldFocused) {
-        focusWtchButton(wtchButton, scope);
       }
     });
   }
 
-  function scheduleWtchFocus(root) {
-    // Lampa сама устанавливает первоначальный focus немного позже
-    // отрисовки карточки. Поэтому несколько коротких попыток нужны,
-    // чтобы перехватить именно этот первый focus.
-    [0, 30, 80, 160, 300].forEach(function (delay) {
+  // =========================================================
+  // 2.6. Исправление первоначального автофокуса
+  // =========================================================
+
+  var wtchInitialFocusCancelled = false;
+  var wtchInitialFocusTimer = null;
+
+  function cancelWtchInitialFocus() {
+    wtchInitialFocusCancelled = true;
+
+    if (wtchInitialFocusTimer) {
+      clearTimeout(wtchInitialFocusTimer);
+      wtchInitialFocusTimer = null;
+    }
+  }
+
+  function installWtchFocusCancel() {
+    if (
+      window.lampa_wtch_focus_cancel_installed
+    ) {
+      return;
+    }
+
+    window.lampa_wtch_focus_cancel_installed = true;
+
+    // Как только пользователь сам нажал кнопку/стрелку,
+    // прекращаем принудительный начальный фокус.
+    safe(function () {
+      document.addEventListener(
+        'keydown',
+        function () {
+          cancelWtchInitialFocus();
+        },
+        true
+      );
+    });
+
+    safe(function () {
+      document.addEventListener(
+        'click',
+        function () {
+          cancelWtchInitialFocus();
+        },
+        true
+      );
+    });
+  }
+
+  function scheduleWtchInitialFocus(root) {
+    var scope = root || document;
+
+    installWtchFocusCancel();
+
+    wtchInitialFocusCancelled = false;
+
+    // Lampa может поменять focus спустя несколько десятков
+    // или сотен миллисекунд после открытия карточки.
+    var delays = [
+      0,
+      30,
+      80,
+      150,
+      250,
+      400,
+      650
+    ];
+
+    delays.forEach(function (delay) {
       setTimeout(function () {
         safe(function () {
-          var wtch = findWtchButton(root || document);
+          if (wtchInitialFocusCancelled) return;
+
+          var wtch = findWtchButton(scope);
+
+          // WTCH может загрузиться позже самой карточки.
           if (!wtch) return;
 
-          // Если пользователь уже успел переместить focus, не мешаем ему.
-          var oldHidden = document.querySelector(
-            '.full-start__button[data-lampa-wtch-native-hidden="1"].focus'
+          replaceWtchButton(
+            scope,
+            false
           );
 
-          if (oldHidden || delay === 0) {
-            focusWtchButton(wtch, root || document);
-          }
+          wtch = findWtchButton(scope);
+
+          if (!wtch) return;
+
+          // ВАЖНО:
+          // ставим начальный focus на WTCH независимо от того,
+          // куда Lampa уже успела поставить старый focus.
+          focusWtchButton(
+            wtch,
+            scope
+          );
         });
       }, delay);
     });
+
+    wtchInitialFocusTimer = setTimeout(
+      function () {
+        wtchInitialFocusTimer = null;
+      },
+      700
+    );
   }
 
   // =========================================================
@@ -424,7 +497,8 @@
       if (
         window.Lampa &&
         window.Lampa.SettingsApi &&
-        typeof window.Lampa.SettingsApi.addParam === 'function'
+        typeof window.Lampa.SettingsApi.addParam ===
+          'function'
       ) {
         if (window.lampa_settings) {
           window.lampa_settings.torrents_use = false;
@@ -434,12 +508,15 @@
   }
 
   // =========================================================
-  // 3.5. Отключаем баннер Showy PRO и всплывающие предложения
-  //      подписки (ShowyMarketingRuntime / ShowyProEntryBanner)
+  // 3.5. Отключаем баннер Showy PRO
   // =========================================================
 
   function installShowyProGuards() {
-    if (window.lampa_wtch_showy_guard_installed) return;
+    if (
+      window.lampa_wtch_showy_guard_installed
+    ) {
+      return;
+    }
 
     window.lampa_wtch_showy_guard_installed = true;
 
@@ -447,7 +524,9 @@
       if (!window.ShowyMarketingRuntime) {
         window.ShowyMarketingRuntime = {
           start: function () {},
+
           context: function () {},
+
           trackLinkResolved: function () {},
 
           createWtchInvoice: function () {
@@ -466,8 +545,14 @@
             return url;
           },
 
-          ensureInlinePro: function (pro, success) {
-            if (typeof success === 'function') {
+          ensureInlinePro: function (
+            pro,
+            success
+          ) {
+            if (
+              typeof success ===
+              'function'
+            ) {
               success({
                 base: '',
                 verified: false,
@@ -494,7 +579,8 @@
             };
           },
 
-          version: 'disabled-by-guard'
+          version:
+            'disabled-by-guard'
         };
       }
     });
@@ -505,65 +591,129 @@
   // =========================================================
 
   function installUiCleaner() {
-    if (window.lampa_wtch_unified_ui_cleaner) return;
+    if (
+      window.lampa_wtch_unified_ui_cleaner
+    ) {
+      return;
+    }
 
-    window.lampa_wtch_unified_ui_cleaner = true;
+    window.lampa_wtch_unified_ui_cleaner =
+      true;
 
     safe(function () {
       if (
         window.Lampa &&
         window.Lampa.Listener
       ) {
-        Lampa.Listener.follow('full', function (e) {
+        Lampa.Listener.follow(
+          'full',
+          function (e) {
+            if (
+              e.type === 'complite' ||
+              e.type === 'complete'
+            ) {
+              setTimeout(
+                function () {
+                  var root =
+                    document;
 
-          if (
-            e.type === 'complite' ||
-            e.type === 'complete'
-          ) {
-            setTimeout(function () {
+                  safe(function () {
+                    if (
+                      e.object &&
+                      e.object.activity &&
+                      typeof e.object
+                        .activity
+                        .render ===
+                        'function'
+                    ) {
+                      root =
+                        e.object.activity.render();
+                    }
+                  });
 
-              var root = document;
+                  removeUnwantedUI(
+                    root
+                  );
 
-              safe(function () {
-                if (
-                  e.object &&
-                  e.object.activity &&
-                  typeof e.object.activity.render === 'function'
-                ) {
-                  root = e.object.activity.render();
-                }
-              });
+                  replaceWtchButton(
+                    root,
+                    false
+                  );
 
-              removeUnwantedUI(root);
-              replaceWtchButton(root, true);
-              replaceWtchButton(document, false);
-              scheduleWtchFocus(root);
+                  replaceWtchButton(
+                    document,
+                    false
+                  );
 
-            }, 50);
+                  // Перехватываем начальный focus
+                  // после построения коллекции.
+                  scheduleWtchInitialFocus(
+                    root
+                  );
+                },
+                50
+              );
+            }
           }
-        });
+        );
       }
     });
 
-    // MutationObserver
+    // MutationObserver нужен потому, что WTCH может
+    // догрузиться уже после появления карточки.
     if (
       window.MutationObserver &&
-      !window.lampa_wtch_unified_observer
+      !window
+        .lampa_wtch_unified_observer
     ) {
-      window.lampa_wtch_unified_observer =
-        new MutationObserver(function () {
-          removeUnwantedUI(document);
-          replaceWtchButton(document, false);
-        });
+      window
+        .lampa_wtch_unified_observer =
+        new MutationObserver(
+          function () {
+            removeUnwantedUI(
+              document
+            );
 
-      safe(function () {
-        window.lampa_wtch_unified_observer.observe(
-          document.documentElement,
-          {
-            childList: true,
-            subtree: true
+            replaceWtchButton(
+              document,
+              false
+            );
+
+            safe(function () {
+              var wtch =
+                findWtchButton(
+                  document
+                );
+
+              if (
+                wtch &&
+                !wtch.getAttribute(
+                  'data-lampa-wtch-focus-scheduled'
+                )
+              ) {
+                wtch.setAttribute(
+                  'data-lampa-wtch-focus-scheduled',
+                  '1'
+                );
+
+                scheduleWtchInitialFocus(
+                  document
+                );
+              }
+            });
           }
         );
+
+      safe(function () {
+        window
+          .lampa_wtch_unified_observer
+          .observe(
+            document.documentElement,
+            {
+              childList: true,
+              subtree: true
+            }
+          );
       });
     }
   }
@@ -573,23 +723,35 @@
   // =========================================================
 
   function installPlayerSkin() {
-    if (window.lampa_wtch_player_skin_installed) return;
+    if (
+      window.lampa_wtch_player_skin_installed
+    ) {
+      return;
+    }
 
-    window.lampa_wtch_player_skin_installed = true;
+    window.lampa_wtch_player_skin_installed =
+      true;
 
     safe(function () {
       if (
         !window.Lampa ||
         !window.Lampa.Player ||
         !window.Lampa.Platform ||
-        typeof window.$ === 'undefined'
+        typeof window.$ ===
+          'undefined'
       ) {
         return;
       }
 
       if (
-        Lampa.Platform.screen('mobile') ||
-        (Lampa.Manifest && Lampa.Manifest.app_digital > 328)
+        Lampa.Platform.screen(
+          'mobile'
+        ) ||
+        (
+          Lampa.Manifest &&
+          Lampa.Manifest.app_digital >
+            328
+        )
       ) {
         return;
       }
@@ -599,9 +761,13 @@
           'lampa_wtch_player_skin_css'
         )
       ) {
-        var style = document.createElement('style');
+        var style =
+          document.createElement(
+            'style'
+          );
 
-        style.id = 'lampa_wtch_player_skin_css';
+        style.id =
+          'lampa_wtch_player_skin_css';
 
         style.innerHTML =
           '.player-video__overlay{display:none;background:-webkit-gradient(linear,left top,left bottom,from(rgba(0,0,0,0.5)),color-stop(53%,rgba(0,0,0,0.3)),to(rgba(11,13,16,0.8)));background:-webkit-linear-gradient(top,rgba(0,0,0,0.5) 0,rgba(0,0,0,0.3) 53%,rgba(11,13,16,0.8) 100%);background:-moz-linear-gradient(top,rgba(0,0,0,0.5) 0,rgba(0,0,0,0.3) 53%,rgba(11,13,16,0.8) 100%);background:-o-linear-gradient(top,rgba(0,0,0,0.5) 0,rgba(0,0,0,0.3) 53%,rgba(11,13,16,0.8) 100%);background:linear-gradient(to bottom,rgba(0,0,0,0.5) 0,rgba(0,0,0,0.3) 53%,rgba(11,13,16,0.8) 100%);position:absolute;top:0;left:0;width:100%;height:100%}' +
@@ -637,14 +803,21 @@
           '.normalization{background:rgba(255,255,255,0.1);-webkit-border-radius:1em;border-radius:1em}' +
           '.normalization canvas{-webkit-border-radius:1em;border-radius:1em}' +
           'body.platform--browser .player:not(.iptv) .player-panel__box-buttons,body.platform--browser .player:not(.iptv) .player-panel__playpause:not(.focus),body.platform--browser .player:not(.iptv) .player-info__values .value--size span,body.platform--nw .player:not(.iptv) .player-panel__box-buttons,body.platform--nw .player:not(.iptv) .player-panel__playpause:not(.focus),body.platform--nw .player:not(.iptv) .player-info__values .value--size span,body.glass--style.platform--apple .player:not(.iptv) .player-panel__box-buttons,body.glass--style.platform--apple .player:not(.iptv) .player-panel__playpause:not(.focus),body.glass--style.platform--apple .player:not(.iptv) .player-info__values .value--size span,body.glass--style.platform--apple_tv .player:not(.iptv) .player-panel__box-buttons,body.glass--style.platform--apple_tv .player:not(.iptv) .player-panel__playpause:not(.focus),body.glass--style.platform--apple_tv .player:not(.iptv) .player-info__values .value--size span,body.glass--style.platform--android .player:not(.iptv) .player-panel__box-buttons,body.glass--style.platform--android .player:not(.iptv) .player-panel__playpause:not(.focus),body.glass--style.platform--android .player:not(.iptv) .player-info__values .value--size span{-webkit-backdrop-filter:blur(1em);backdrop-filter:blur(1em)}' +
-          'body.platform--browser .normalization,body.platform--browser .player-video__paused,body.platform--browser .player-video__loader,body.platform--nw .normalization,body.platform--nw .player-video__paused,body.platform--nw .player-video__loader,body.glass--style.platform--apple .normalization,body.glass--style.platform--apple .player-video__paused,body.glass--style.platform--apple .player-video__loader,body.glass--style.platform--android .normalization,body.glass--style.platform--android .player-video__paused,body.glass--style.platform--android .player-video__loader{background-color:rgba(255,255,255,0.1);-webkit-backdrop-filter:blur(1em);backdrop-filter:blur(1em)}';
+          'body.platform--browser .normalization,body.platform--browser .player-video__paused,body.platform--browser .player-video__loader,body.platform--nw .normalization,body.platform--nw .player-video__paused,body.platform--nw .player-video__loader,body.glass--style.platform--apple .normalization,body.glass--style.platform--apple .player-video__paused,body.glass--style.platform--apple .player-video__loader,body.glass--style.platform--apple_tv .normalization,body.glass--style.platform--apple_tv .player-video__paused,body.glass--style.platform--apple_tv .player-video__loader,body.glass--style.platform--android .normalization,body.glass--style.platform--android .player-video__paused,body.glass--style.platform--android .player-video__loader{background-color:rgba(255,255,255,0.1);-webkit-backdrop-filter:blur(1em);backdrop-filter:blur(1em)}';
 
-        document.head.appendChild(style);
+        document.head.appendChild(
+          style
+        );
       }
 
-      var render = $(Lampa.Player.render());
-      var title = $('<div class="player-info__title"></div>');
-      var value = $('<div class="value--name"><span></span></div>');
+      var render =
+        $(Lampa.Player.render());
+
+      var title =
+        $('<div class="player-info__title"></div>');
+
+      var value =
+        $('<div class="value--name"><span></span></div>');
 
       render
         .find('.player-video__display')
@@ -654,13 +827,17 @@
 
       render
         .find('.player-panel__center')
-        .find('.button:not(.player-panel__playpause)')
+        .find(
+          '.button:not(.player-panel__playpause)'
+        )
         .remove();
 
       render
         .find('.player-panel__timeline')
         .before(
-          render.find('.player-panel__line-one')
+          render.find(
+            '.player-panel__line-one'
+          )
         );
 
       render
@@ -671,40 +848,81 @@
         .find('.value--size')
         .after(value);
 
-      var box = $('<div class="player-panel__box-buttons"></div>');
-      var right_panel = render.find('.player-panel__right');
-      var left_panel = render.find('.player-panel__left');
+      var box =
+        $('<div class="player-panel__box-buttons"></div>');
 
-      var right_box_quality = box.clone();
-      var right_box_main = box.clone();
-      var right_box_audio = box.clone();
-      var left_box_main = box.clone();
+      var right_panel =
+        render.find(
+          '.player-panel__right'
+        );
 
-      right_panel.append(right_box_audio);
-      right_panel.append(right_box_quality);
-      right_panel.append(right_box_main);
+      var left_panel =
+        render.find(
+          '.player-panel__left'
+        );
 
-      right_box_main.append(right_panel.find('.button'));
+      var right_box_quality =
+        box.clone();
+
+      var right_box_main =
+        box.clone();
+
+      var right_box_audio =
+        box.clone();
+
+      var left_box_main =
+        box.clone();
+
+      right_panel.append(
+        right_box_audio
+      );
+
+      right_panel.append(
+        right_box_quality
+      );
+
+      right_panel.append(
+        right_box_main
+      );
+
+      right_box_main.append(
+        right_panel.find(
+          '.button'
+        )
+      );
+
       right_box_quality.append(
-        right_panel.find('.player-panel__quality')
+        right_panel.find(
+          '.player-panel__quality'
+        )
       );
 
       right_box_audio.append(
-        right_panel.find('.player-panel__flow')
+        right_panel.find(
+          '.player-panel__flow'
+        )
       );
 
       right_box_audio.append(
-        right_panel.find('.player-panel__subs')
+        right_panel.find(
+          '.player-panel__subs'
+        )
       );
 
       right_box_audio.append(
-        right_panel.find('.player-panel__tracks')
+        right_panel.find(
+          '.player-panel__tracks'
+        )
       );
 
-      left_panel.prepend(left_box_main);
+      left_panel.prepend(
+        left_box_main
+      );
 
       left_box_main.append(
-        left_panel.find('.button')
+        left_panel.find(
+          '.button'
+        )
       );
 
       Lampa.Player.listener.follow(
@@ -738,12 +956,17 @@
 
           render
             .find('.player-info__name')
-            .toggleClass('hide', true);
+            .toggleClass(
+              'hide',
+              true
+            );
 
           value
             .toggleClass(
               'hide',
-              Boolean(name == head)
+              Boolean(
+                name == head
+              )
             )
             .find('span')
             .text(name);
@@ -757,14 +980,16 @@
   // =========================================================
 
   function loadWTCH() {
-    if (window.lampa_wtch_unified_loaded) return;
+    if (
+      window.lampa_wtch_unified_loaded
+    ) {
+      return;
+    }
 
-    window.lampa_wtch_unified_loaded = true;
+    window.lampa_wtch_unified_loaded =
+      true;
 
-    // ВАЖНО:
-    // http://wtch.ch/m — это уже сам JS.
-    // Не добавляем /online.js
-    // Не добавляем /m/online.js
+    // http://wtch.ch/m — уже сам JS.
     var scripts = [
       SCRIPT_URL
     ];
@@ -773,19 +998,23 @@
     if (
       window.Lampa &&
       window.Lampa.Utils &&
-      typeof window.Lampa.Utils.putScriptAsync === 'function'
+      typeof
+        window.Lampa.Utils.putScriptAsync ===
+        'function'
     ) {
-      var result = safe(function () {
+      var result = safe(
+        function () {
+          Lampa.Utils.putScriptAsync(
+            scripts,
+            function () {
+              window.lampa_wtch_unified_ready =
+                true;
+            }
+          );
 
-        Lampa.Utils.putScriptAsync(
-          scripts,
-          function () {
-            window.lampa_wtch_unified_ready = true;
-          }
-        );
-
-        return true;
-      });
+          return true;
+        }
+      );
 
       if (result) return;
     }
@@ -794,16 +1023,24 @@
     var index = 0;
 
     function next() {
+      if (
+        index >= scripts.length
+      ) {
+        window.lampa_wtch_unified_ready =
+          true;
 
-      if (index >= scripts.length) {
-        window.lampa_wtch_unified_ready = true;
         return;
       }
 
-      var script = document.createElement('script');
+      var script =
+        document.createElement(
+          'script'
+        );
 
       script.async = true;
-      script.src = scripts[index++];
+
+      script.src =
+        scripts[index++];
 
       script.onload = next;
       script.onerror = next;
@@ -811,7 +1048,9 @@
       (
         document.head ||
         document.documentElement
-      ).appendChild(script);
+      ).appendChild(
+        script
+      );
     }
 
     next();
@@ -822,17 +1061,24 @@
   // =========================================================
 
   installShowyProGuards();
+
   loadWTCH();
 
   function start() {
-
     injectCSS();
 
     installUiCleaner();
 
     disableTorrentSetting();
 
-    replaceWtchButton(document, false);
+    replaceWtchButton(
+      document,
+      false
+    );
+
+    scheduleWtchInitialFocus(
+      document
+    );
 
     installPlayerSkin();
   }
@@ -842,33 +1088,26 @@
   // =========================================================
 
   if (window.appready) {
-
     start();
-
   } else {
-
     safe(function () {
-
       if (
         window.Lampa &&
         window.Lampa.Listener
       ) {
-
         Lampa.Listener.follow(
           'app',
           function (event) {
-
-            if (event.type === 'ready') {
+            if (
+              event.type ===
+              'ready'
+            ) {
               start();
             }
-
           }
         );
-
       }
-
     });
-
   }
 
   // =========================================================
@@ -876,19 +1115,12 @@
   // =========================================================
 
   window.lampa_wtch_unified = {
-
     version: VERSION,
-
     script: SCRIPT_URL,
-
     trailers: false,
-
     shots: false,
-
     torrents: false,
-
     player_skin: true
-
   };
 
 })();
