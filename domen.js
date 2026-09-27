@@ -1,12 +1,28 @@
 (function () {
     'use strict';
 
+    // Не даём плагину подключиться дважды (например, если он попадёт
+    // в сборку через несколько источников) — иначе задублируется
+    // пункт "Домен" в настройках.
+    if (window.lampa_custom_domain_v1) return;
+    window.lampa_custom_domain_v1 = true;
+
     var currentHost = window.location.hostname;
     var targetHost = 'lampa.run';
     var originalHost = 'lampa.mx';
 
     // Протокол берём от текущей страницы, а не хардкодим http://
     var proto = (window.location.protocol === 'https:') ? 'https:' : 'http:';
+
+    // Безопасный вызов: одна ошибка внутри не должна ронять весь плагин
+    function safe(fn) {
+        try {
+            return fn();
+        } catch (e) {
+            console.warn('[custom_domain]', e);
+            return null;
+        }
+    }
 
     // Плоский стиль окон + иконки в пунктах настроек
     var style = document.createElement('style');
@@ -56,25 +72,44 @@
     // Ставит иконку перед названием пункта в настройках
     function withIcon(paths) {
         return function (item) {
-            try {
+            safe(function () {
                 item.find('.settings-param__name').prepend(svg(paths, null, 'domain-param-icon'));
-            } catch (e) {
-                console.warn('[custom_domain] icon render failed', e);
-            }
+            });
         };
     }
 
-    // Безопасное закрытие окна и возврат фокуса пульту/клавиатуре.
-    // Controller.toggle вызываем синхронно — так же делает сама Lampa.
+    function activeController(fallback) {
+        return safe(function () {
+            return Lampa.Controller.enabled().name;
+        }) || fallback || 'settings';
+    }
+
+    // Безопасное закрытие окна и возврат фокуса пульту/клавиатуре
     function closeAndRestore(controllerName) {
-        Lampa.Modal.close();
-        try {
-            if (window.Lampa && window.Lampa.Controller) {
-                Lampa.Controller.toggle(controllerName || 'settings');
-            }
-        } catch (e) {
-            console.warn('[custom_domain] controller toggle failed', e);
-        }
+        safe(function () { Lampa.Modal.close(); });
+        safe(function () { Lampa.Controller.toggle(controllerName || 'settings'); });
+    }
+
+    // Общее окно "да/нет" — раньше было продублировано для смены домена
+    // и для сброса кэша, теперь один вызов на оба случая.
+    function confirmModal(options) {
+        var prevController = activeController();
+
+        safe(function () {
+            Lampa.Modal.open({
+                title: options.title,
+                html: $('<div class="flat-domain-modal">' + options.text + '</div>'),
+                size: 'small',
+                onBack: function () { closeAndRestore(prevController); },
+                buttons: [
+                    { name: 'Отмена', onSelect: function () { closeAndRestore(prevController); } },
+                    { name: options.confirmName, onSelect: function () {
+                        safe(function () { Lampa.Modal.close(); });
+                        options.onConfirm();
+                    } }
+                ]
+            });
+        });
     }
 
     function goToTarget() {
@@ -85,34 +120,32 @@
     // Окно переключения домена (без предварительной проверки доступности)
     function openSwitchDomainModal() {
         var isRun = (currentHost === targetHost);
-        var prevController = (window.Lampa && window.Lampa.Controller && Lampa.Controller.enabled()) ? Lampa.Controller.enabled().name : 'settings';
 
-        Lampa.Modal.open({
+        confirmModal({
             title: isRun ? 'Возврат домена' : 'Смена домена',
-            html: $('<div class="flat-domain-modal">' +
-                   (isRun
-                       ? 'Вернуться на <b>' + originalHost + '</b>?<div class="flat-domain-hint">Автоматический переход на ' + targetHost + ' будет отключён</div>'
-                       : 'Перейти на <b>' + targetHost + '</b>?<div class="flat-domain-hint">При запуске приложение будет открываться на этом домене</div>')
-                   + '</div>'),
-            size: 'small',
-            onBack: function () { closeAndRestore(prevController); },
-            buttons: [
-                {
-                    name: 'Отмена',
-                    onSelect: function () { closeAndRestore(prevController); }
-                },
-                {
-                    name: isRun ? 'Вернуться' : 'Включить',
-                    onSelect: function () {
-                        Lampa.Modal.close();
-                        if (isRun) {
-                            window.location.href = proto + '//' + originalHost + '/?reset_domain=1';
-                        } else {
-                            goToTarget();
-                        }
-                    }
+            text: isRun
+                ? 'Вернуться на <b>' + originalHost + '</b>?<div class="flat-domain-hint">Автоматический переход на ' + targetHost + ' будет отключён</div>'
+                : 'Перейти на <b>' + targetHost + '</b>?<div class="flat-domain-hint">При запуске приложение будет открываться на этом домене</div>',
+            confirmName: isRun ? 'Вернуться' : 'Включить',
+            onConfirm: function () {
+                if (isRun) {
+                    window.location.href = proto + '//' + originalHost + '/?reset_domain=1';
+                } else {
+                    goToTarget();
                 }
-            ]
+            }
+        });
+    }
+
+    function openClearCacheModal() {
+        confirmModal({
+            title: 'Сброс кэша',
+            text: 'Очистить кэш приложения?<div class="flat-domain-hint">Настройки и аккаунт сохранятся</div>',
+            confirmName: 'Сбросить',
+            onConfirm: function () {
+                window.localStorage.removeItem('lampa_cache');
+                window.location.reload();
+            }
         });
     }
 
@@ -130,83 +163,73 @@
     }
 
     function init() {
-        // Раздел "Домен" в Настройках
-        Lampa.SettingsApi.addComponent({
-            component: 'custom_domain',
-            icon: svg(ICON_GLOBE, 36),
-            name: 'Домен'
-        });
-
         var isRun = (currentHost === targetHost);
 
-        // Смена домена
-        Lampa.SettingsApi.addParam({
-            component: 'custom_domain',
-            param: { name: 'switch_domain_btn', type: 'button' },
-            field: {
-                name: isRun ? 'Вернуться на ' + originalHost : 'Переключить на ' + targetHost,
-                description: 'Сейчас установлен: ' + currentHost
-            },
-            onChange: openSwitchDomainModal,
-            onRender: withIcon(ICON_GLOBE)
-        });
+        safe(function () {
+            // Раздел "Домен" в Настройках
+            Lampa.SettingsApi.addComponent({
+                component: 'custom_domain',
+                icon: svg(ICON_GLOBE, 36),
+                name: 'Домен'
+            });
 
-        // Перезагрузка страницы
-        Lampa.SettingsApi.addParam({
-            component: 'custom_domain',
-            param: { name: 'reload_page_btn', type: 'button' },
-            field: {
-                name: 'Перезагрузить страницу',
-                description: 'Полностью перезапустить приложение'
-            },
-            onChange: function () { window.location.reload(); },
-            onRender: withIcon(ICON_RELOAD)
-        });
+            // Смена домена
+            Lampa.SettingsApi.addParam({
+                component: 'custom_domain',
+                param: { name: 'switch_domain_btn', type: 'button' },
+                field: {
+                    name: isRun ? 'Вернуться на ' + originalHost : 'Переключить на ' + targetHost,
+                    description: 'Сейчас установлен: ' + currentHost
+                },
+                onChange: openSwitchDomainModal,
+                onRender: withIcon(ICON_GLOBE)
+            });
 
-        // Сброс кэша
-        Lampa.SettingsApi.addParam({
-            component: 'custom_domain',
-            param: { name: 'clear_app_cache', type: 'button' },
-            field: {
-                name: 'Очистить кэш приложения',
-                description: 'Полезно, если после смены домена не грузятся постеры'
-            },
-            onChange: function () {
-                var prevController = (window.Lampa && window.Lampa.Controller && Lampa.Controller.enabled()) ? Lampa.Controller.enabled().name : 'settings';
+            // Перезагрузка страницы
+            Lampa.SettingsApi.addParam({
+                component: 'custom_domain',
+                param: { name: 'reload_page_btn', type: 'button' },
+                field: {
+                    name: 'Перезагрузить страницу',
+                    description: 'Полностью перезапустить приложение'
+                },
+                onChange: function () { window.location.reload(); },
+                onRender: withIcon(ICON_RELOAD)
+            });
 
-                Lampa.Modal.open({
-                    title: 'Сброс кэша',
-                    html: $('<div class="flat-domain-modal">Очистить кэш приложения?<div class="flat-domain-hint">Настройки и аккаунт сохранятся</div></div>'),
-                    size: 'small',
-                    onBack: function () { closeAndRestore(prevController); },
-                    buttons: [
-                        { name: 'Отмена', onSelect: function () { closeAndRestore(prevController); } },
-                        { name: 'Сбросить', onSelect: function () {
-                            window.localStorage.removeItem('lampa_cache');
-                            window.location.reload();
-                        }}
-                    ]
-                });
-            },
-            onRender: withIcon(ICON_TRASH)
+            // Сброс кэша
+            Lampa.SettingsApi.addParam({
+                component: 'custom_domain',
+                param: { name: 'clear_app_cache', type: 'button' },
+                field: {
+                    name: 'Очистить кэш приложения',
+                    description: 'Полезно, если после смены домена не грузятся постеры'
+                },
+                onChange: openClearCacheModal,
+                onRender: withIcon(ICON_TRASH)
+            });
         });
     }
 
     if (window.appready) {
         init();
     } else {
-        Lampa.Listener.follow('app', function (e) {
-            if (e.type == 'ready') init();
+        safe(function () {
+            Lampa.Listener.follow('app', function (e) {
+                if (e.type == 'ready') init();
+            });
         });
     }
 
     // Поднимаем раздел "Домен" в самый верх меню настроек (перед Синхронизацией)
-    Lampa.Settings.listener.follow('open', function (e) {
-        if (e.name === 'main') {
-            var domainItem = e.body.find('[data-component="custom_domain"]');
-            if (domainItem.length) {
-                domainItem.prependTo(domainItem.parent());
+    safe(function () {
+        Lampa.Settings.listener.follow('open', function (e) {
+            if (e.name === 'main') {
+                var domainItem = e.body.find('[data-component="custom_domain"]');
+                if (domainItem.length) {
+                    domainItem.prependTo(domainItem.parent());
+                }
             }
-        }
+        });
     });
 })();
