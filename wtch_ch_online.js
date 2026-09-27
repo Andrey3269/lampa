@@ -5745,6 +5745,8 @@ window.rch_nws[hostkey].Registry = function RchRegistry(client, startConnection)
     Lampa.Component.add('wtch', component); //Ñ‚Ð¾ Ð¶Ðµ ÑÐ°Ð¼Ð¾Ðµ
     resetTemplates();
 
+    if (window.console) { try { console.log("[wtch-patch] блок addButton загрузился и выполняется"); } catch (e) {} }
+
     // ПАТЧ: вместо создания отдельной кнопки ".wtch--button" вешаем
     // открытие меню WTCH прямо на переданный элемент (у нас ниже это
     // "Смотреть" / .button--play). Кнопка при этом больше не создаётся.
@@ -5752,8 +5754,17 @@ window.rch_nws[hostkey].Registry = function RchRegistry(client, startConnection)
     // addButtonRetry нужен для разовой мгновенной проверки при старте:
     // в этот момент карточка фильма формально уже "открыта", но сама
     // кнопка .button--play может ещё не быть отрисована в DOM.
+    function wtchPatchLog() {
+      if (!window.console) return;
+      try {
+        console.log.apply(console, ['[wtch-patch]'].concat(Array.prototype.slice.call(arguments)));
+      } catch (e) {}
+    }
+
     function addButtonRetry(getRender, movie, triesLeft) {
       var btn = getRender();
+
+      wtchPatchLog('addButtonRetry: найдено элементов =', btn ? btn.length : 0, ', попыток осталось =', triesLeft);
 
       if (btn && btn.length) {
         addButton({ render: btn, movie: movie });
@@ -5764,20 +5775,35 @@ window.rch_nws[hostkey].Registry = function RchRegistry(client, startConnection)
         setTimeout(function () {
           addButtonRetry(getRender, movie, triesLeft - 1);
         }, 150);
+      } else {
+        wtchPatchLog('addButtonRetry: СДАЛСЯ, .button--play так и не появилась');
       }
     }
 
     function addButton(e) {
       var btn = e.render;
-      if (!btn || !btn.length || btn.data('wtchBound')) return;
+      if (!btn || !btn.length) {
+        wtchPatchLog('addButton: элемент пустой, выходим');
+        return;
+      }
+      if (btn.data('wtchBound')) {
+        wtchPatchLog('addButton: уже привязан ранее, выходим');
+        return;
+      }
       btn.data('wtchBound', true);
 
-      btn.on('hover:enter.wtch', function() {
+      wtchPatchLog('addButton: привязываю обработчик к', btn.get(0));
+
+      function openWtch(source) {
+        wtchPatchLog('openWtch вызван, источник события =', source);
+
         resetTemplates();
         Lampa.Component.add('wtch', component);
 
 		var id = Lampa.Utils.hash(e.movie.number_of_seasons ? e.movie.original_name : e.movie.original_title);
 		var all = Lampa.Storage.get('clarification_search','{}');
+
+        wtchPatchLog('вызываю Lampa.Activity.push с component: wtch');
 
         Lampa.Activity.push({
           url: '',
@@ -5790,7 +5816,22 @@ window.rch_nws[hostkey].Registry = function RchRegistry(client, startConnection)
           page: 1,
 		  clarification: all[id] ? true : false
         });
+
+        wtchPatchLog('Lampa.Activity.push выполнен без исключений');
+      }
+
+      btn.on('hover:enter.wtch', function() {
+        openWtch('jQuery hover:enter');
       });
+
+      // Запасной вариант: обычный клик мышью/тапом, на случай если
+      // именно на этой кнопке 'hover:enter' почему-то не срабатывает
+      btn.get(0).addEventListener('click', function () {
+        wtchPatchLog('сработал НАТИВНЫЙ click на .button--play');
+        openWtch('native click');
+      }, true);
+
+      wtchPatchLog('addButton: обработчики (hover:enter + click) успешно навешаны');
     }
     Lampa.Listener.follow('full', function(e) {
       if (e.type == 'complite') {
