@@ -133,58 +133,89 @@
   }
 
   // =========================================================
-  // 2.5. Прячем дублирующую кнопку "Wtch" рядом со "Смотреть"
-  //      и переносим её действие на клик по "Смотреть"
+  // 2.5. Вырезаем добавленную кнопку "Wtch" и переносим её
+  //      действие прямо на родную кнопку "Смотреть"
   // =========================================================
+  //
+  // online.js всегда создаёт кнопку с классами
+  // "full-start__button selector view--online wtch--button"
+  // и вешает на неё jQuery-событие 'hover:enter', которое пушит
+  // Lampa.Activity с component: 'wtch'. Мы вырезаем эту кнопку
+  // и вызываем тот же Lampa.Activity.push сами — по клику/входу
+  // на родную кнопку "Смотреть" (.view--online без wtch--button).
 
-  function mergeWtchDuplicateButton(root) {
+  function openWtchSearch(e) {
+    if (e) {
+      safe(function () { e.preventDefault(); });
+      safe(function () { e.stopImmediatePropagation(); });
+    }
+
+    safe(function () {
+      var movie = null;
+
+      safe(function () {
+        movie = Lampa.Activity.active().movie || Lampa.Activity.active().card;
+      });
+
+      if (!movie) return;
+
+      var id = '';
+      safe(function () {
+        id = Lampa.Utils.hash(
+          movie.number_of_seasons ? movie.original_name : movie.original_title
+        );
+      });
+
+      var all = {};
+      safe(function () {
+        all = Lampa.Storage.get('clarification_search', '{}');
+      });
+
+      Lampa.Activity.push({
+        url: '',
+        title: Lampa.Lang.translate('title_wtch'),
+        component: 'wtch',
+        search: (id && all[id]) ? all[id] : movie.title,
+        search_one: movie.title,
+        search_two: movie.original_title,
+        movie: movie,
+        page: 1,
+        clarification: !!(id && all[id])
+      });
+    });
+  }
+
+  function installWtchOnWatchButton(root) {
     var scope = root || document;
 
     safe(function () {
-      // Основной случай: кнопка WTCH всегда имеет класс "wtch--button"
-      // (см. online.js: full-start__button selector view--online wtch--button).
       var wtchButtons = scope.querySelectorAll('.wtch--button');
 
       for (var i = 0; i < wtchButtons.length; i++) {
         var wtchBtn = wtchButtons[i];
-        if (wtchBtn.dataset.wtchMerged) continue;
-        wtchBtn.dataset.wtchMerged = '1';
-
-        // Возвращаем привычную подпись "Смотреть" вместо "Wtch"
-        var label = wtchBtn.querySelector('span');
-        if (label) label.textContent = 'Смотреть';
-
-        // Если рядом есть ещё одна "родная" кнопка view--online
-        // (не сама wtch--button) — прячем её, чтобы не было дубля
         var parent = wtchBtn.parentNode;
-        var nativeBtn = parent
-          ? parent.querySelector('.view--online:not(.wtch--button)')
-          : null;
 
-        if (nativeBtn) nativeBtn.style.display = 'none';
-      }
-    });
+        // Вырезаем добавленную кнопку полностью
+        wtchBtn.remove();
 
-    // Запасной вариант на случай другой вёрстки: ищем по видимому
-    // тексту отдельно стоящую кнопку "Wtch" рядом со "Смотреть".
-    safe(function () {
-      var candidates = scope.querySelectorAll(
-        '.full-start__button, .selector, .button'
-      );
+        if (!parent) continue;
 
-      for (var j = 0; j < candidates.length; j++) {
-        var el = candidates[j];
-        if (el.classList.contains('wtch--button')) continue;
+        var watchBtn = parent.querySelector('.view--online:not(.wtch--button)');
+        if (!watchBtn || watchBtn.dataset.wtchBound) continue;
 
-        var text = (el.textContent || '')
-          .replace(/\s+/g, ' ')
-          .trim()
-          .toLowerCase();
+        watchBtn.dataset.wtchBound = '1';
 
-        if (text === 'wtch' && !el.dataset.wtchMerged) {
-          el.dataset.wtchMerged = '1';
-          el.style.display = 'none';
-        }
+        // Клик мышью / тапом
+        watchBtn.addEventListener('click', openWtchSearch, true);
+
+        // Вход по пульту/клавиатуре (Lampa использует своё событие
+        // hover:enter, а не обычный click) — снимаем возможный
+        // родной обработчик и вешаем свой
+        safe(function () {
+          if (window.$) {
+            window.$(watchBtn).off('hover:enter').on('hover:enter', openWtchSearch);
+          }
+        });
       }
     });
   }
@@ -303,7 +334,7 @@
               });
 
               removeUnwantedUI(root);
-              mergeWtchDuplicateButton(root);
+              installWtchOnWatchButton(root);
 
             }, 50);
           }
@@ -319,7 +350,7 @@
       window.lampa_wtch_unified_observer =
         new MutationObserver(function () {
           removeUnwantedUI(document);
-          mergeWtchDuplicateButton(document);
+          installWtchOnWatchButton(document);
         });
 
       safe(function () {
