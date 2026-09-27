@@ -238,7 +238,7 @@
           continue;
         }
 
-        var watchBtn = parent.querySelector('.view--online:not(.wtch--button)');
+        var watchBtn = parent.querySelector('.button--play');
 
         wtchLog('watchBtn found =', !!watchBtn, watchBtn ? watchBtn.outerHTML : null);
 
