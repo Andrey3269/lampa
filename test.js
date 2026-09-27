@@ -1,2881 +1,957 @@
 (function () {
-    'use strict';
+  'use strict';
 
-    if (window.lampa_wtch_tv_source_v3) return;
-    window.lampa_wtch_tv_source_v3 = true;
+  if (window.lampa_wtch_unified_v1) return;
+  window.lampa_wtch_unified_v1 = true;
 
-    var VERSION = '3.0.0';
-    var SCRIPT_URL = 'http://wtch.ch/m';
-    var MEMORY_KEY = 'lampa_wtch_tv_memory';
+  var VERSION = '1.5.0';
 
-    function safe(fn, fallback) {
-        try {
-            return fn();
-        } catch (e) {
-            return fallback;
+  // Это сам JS-скрипт WTCH.
+  // Ничего к URL не добавляем.
+  var SCRIPT_URL = 'http://wtch.ch/m';
+
+  // =========================================================
+  // Вспомогательная функция
+  // =========================================================
+
+  function safe(fn) {
+    try {
+      return fn();
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // =========================================================
+  // 1. Скрываем ненужные элементы интерфейса
+  // =========================================================
+
+  function injectCSS() {
+    if (document.getElementById('lampa_wtch_hide_css')) return;
+
+    var style = document.createElement('style');
+
+    style.id = 'lampa_wtch_hide_css';
+
+    style.innerHTML = `
+      .view--trailer,
+      [data-action="trailer"],
+
+      .shots-view-button,
+      .view--shots,
+      .shots-view,
+      [data-action="shots"],
+      [data-action="shorts"],
+
+      .view--torrent,
+      .view--torrents,
+      .torrent-view,
+      .torrent-view-button,
+      .torrent-button,
+
+      [data-action="torrent"],
+      [data-action="torrents"],
+      [data-type="torrent"],
+      [data-type="torrents"],
+
+      .button--torrent,
+
+      .full-start__button[data-subtitle*="торрент"],
+      .full-start__button[data-subtitle*="Torrent"] {
+        display: none !important;
+      }
+    `;
+
+    document.head.appendChild(style);
+  }
+
+  // =========================================================
+  // 2. Физически удаляем элементы
+  // =========================================================
+
+  function removeUnwantedUI(root) {
+    var scope = root || document;
+
+    var selectors = [
+      '.view--trailer',
+      '[data-action="trailer"]',
+
+      '.shots-view-button',
+      '.view--shots',
+      '.shots-view',
+      '[data-action="shots"]',
+      '[data-action="shorts"]',
+
+      '.view--torrent',
+      '.view--torrents',
+      '.torrent-view',
+      '.torrent-view-button',
+      '.torrent-button',
+
+      '[data-action="torrent"]',
+      '[data-action="torrents"]',
+      '[data-type="torrent"]',
+      '[data-type="torrents"]',
+
+      '.button--torrent',
+
+      '.full-start__button[data-subtitle*="торрент"]',
+      '.full-start__button[data-subtitle*="Torrent"]'
+    ];
+
+    safe(function () {
+      selectors.forEach(function (selector) {
+        var nodes = scope.querySelectorAll(selector);
+
+        for (var i = 0; i < nodes.length; i++) {
+          nodes[i].remove();
         }
-    }
+      });
+    });
 
-    function storageGet(key, fallback) {
-        return safe(function () {
-            return Lampa.Storage.get(key, fallback);
-        }, fallback);
-    }
+    // Дополнительная очистка по названию кнопки
+    safe(function () {
+      var buttons = scope.querySelectorAll(
+        '.full-start__button, .selector'
+      );
 
-    function storageSet(key, value) {
-        safe(function () {
-            Lampa.Storage.set(key, value);
-        });
-    }
-
-    function movie() {
-        return safe(function () {
-            var a = Lampa.Activity.active();
-            return a && a.movie ? a.movie : null;
-        }, null);
-    }
-
-    function movieKey() {
-        var m = movie();
-
-        if (!m) return '';
-
-        return String(
-            m.id ||
-            m.kinopoisk_id ||
-            m.imdb_id ||
-            m.original_name ||
-            m.original_title ||
-            m.name ||
-            m.title ||
-            ''
-        ).replace(
-            /[^a-zA-Z0-9_.:-]/g,
-            '_'
-        );
-    }
-
-    function memory() {
-        var all = storageGet(
-            MEMORY_KEY,
-            {}
-        );
-
-        var key = movieKey();
-
-        return all && all[key]
-            ? all[key]
-            : {};
-    }
-
-    function remember(patch) {
-        var key = movieKey();
-
-        if (!key) return;
-
-        var all = storageGet(
-            MEMORY_KEY,
-            {}
-        );
-
-        if (!all || typeof all !== 'object') {
-            all = {};
-        }
-
-        all[key] = all[key] || {};
-
-        Object.keys(
-            patch || {}
-        ).forEach(function (name) {
-            if (
-                patch[name] !== undefined &&
-                patch[name] !== null &&
-                patch[name] !== ''
-            ) {
-                all[key][name] = patch[name];
-            }
-        });
-
-        storageSet(
-            MEMORY_KEY,
-            all
-        );
-    }
-
-    // =========================================================
-    // Получаем настоящее состояние Z01
-    //
-    // online_balanser
-    // online_last_balanser
-    // online_choice_<source>
-    //
-    // Это именно те ключи, которые использует wtch.ch.online.js.
-    // =========================================================
-
-    function z01Choice() {
-        var m = movie();
-
-        if (!m) return {};
-
-        var source = storageGet(
-            'online_balanser',
-            ''
-        );
-
-        var last = safe(function () {
-            return Lampa.Storage.cache(
-                'online_last_balanser',
-                3000,
-                {}
-            );
-        }, {});
+      for (var i = 0; i < buttons.length; i++) {
+        var text = (buttons[i].textContent || '')
+          .replace(/\s+/g, ' ')
+          .trim()
+          .toLowerCase();
 
         if (
-            m.id &&
-            last &&
-            last[m.id]
+          text === 'торренты' ||
+          text === 'torrents' ||
+          text === 'torrent'
         ) {
-            source = last[m.id];
+          buttons[i].remove();
         }
+      }
+    });
+  }
 
-        var choice = {};
+  // =========================================================
+  // 3. Выключаем торренты
+  // =========================================================
 
-        if (source) {
-            choice = safe(function () {
-                var data = Lampa.Storage.cache(
-                    'online_choice_' + source,
-                    3000,
-                    {}
-                );
+  function disableTorrentSetting() {
+    safe(function () {
+      if (window.lampa_settings) {
+        window.lampa_settings.torrents_use = false;
+      }
+    });
 
-                return data && data[m.id]
-                    ? data[m.id]
-                    : {};
-            }, {});
+    safe(function () {
+      if (
+        window.Lampa &&
+        window.Lampa.SettingsApi &&
+        typeof window.Lampa.SettingsApi.addParam === 'function'
+      ) {
+        if (window.lampa_settings) {
+          window.lampa_settings.torrents_use = false;
         }
+      }
+    });
+  }
 
-        return {
-            source: source || '',
-            season: choice.season,
-            voice: choice.voice,
-            voice_name: choice.voice_name || '',
-            voice_url: choice.voice_url || ''
+  // =========================================================
+  // 3.5. Отключаем баннер Showy PRO и всплывающие предложения
+  //      подписки (ShowyMarketingRuntime / ShowyProEntryBanner)
+  // =========================================================
+
+  function installShowyProGuards() {
+    if (window.lampa_wtch_showy_guard_installed) return;
+    window.lampa_wtch_showy_guard_installed = true;
+
+    safe(function () {
+      if (!window.ShowyMarketingRuntime) {
+        window.ShowyMarketingRuntime = {
+          start: function () {},
+          context: function () {},
+          trackLinkResolved: function () {},
+          createWtchInvoice: function () {
+            return false;
+          },
+          registerSourceAdapter: function () {
+            return false;
+          },
+          sourceBase: function (base) {
+            return base;
+          },
+          rewriteSourceUrl: function (url) {
+            return url;
+          },
+          ensureInlinePro: function (pro, success) {
+            if (typeof success === 'function') {
+              success({ base: '', verified: false, changed: false });
+            }
+          },
+          isInlineProActive: function () {
+            return false;
+          }
         };
-    }
-
-    // =========================================================
-    // Определение качества
-    // =========================================================
-
-    function qualityOf(text) {
-        text = String(text || '');
-
-        if (
-            /2160\s*p?|4k|uhd/i.test(text)
-        ) {
-            return '4K';
-        }
-
-        if (
-            /1440\s*p?/i.test(text)
-        ) {
-            return 'QHD';
-        }
-
-        if (
-            /1080\s*p?|fhd/i.test(text)
-        ) {
-            return 'FHD';
-        }
-
-        if (
-            /720\s*p?|\bhd\b/i.test(text)
-        ) {
-            return 'HD';
-        }
-
-        if (
-            /576\s*p?|480\s*p?|360\s*p?/i.test(text)
-        ) {
-            return 'SD';
-        }
-
-        return '';
-    }
-
-    // =========================================================
-    // Определение типа озвучки
-    // =========================================================
-
-    function voiceKind(text) {
-        text = String(text || '');
-
-        if (
-            /дубляж|дублирован|\bdub\b|dubbing/i.test(text)
-        ) {
-            return 'Дубляж';
-        }
-
-        if (
-            /многоголос|\bmvo\b|\bpmvo\b/i.test(text)
-        ) {
-            return 'Многоголосая';
-        }
-
-        if (
-            /двухголос|\bdvo\b/i.test(text)
-        ) {
-            return 'Двухголосая';
-        }
-
-        if (
-            /авторск|одноголос|\bavo\b/i.test(text)
-        ) {
-            return 'Авторская';
-        }
-
-        if (
-            /оригинал|original/i.test(text)
-        ) {
-            return 'Оригинал';
-        }
-
-        if (
-            /субтитр|subtitle|\bsubs?\b/i.test(text)
-        ) {
-            return 'Субтитры';
-        }
-
-        return 'Озвучка';
-    }
-
-    // =========================================================
-    // Убираем трейлеры / Shorts / торренты
-    // =========================================================
-
-    function hideUnwantedCSS() {
-        if (
-            document.getElementById(
-                'lampa_wtch_tv_hide'
-            )
-        ) {
-            return;
-        }
-
-        var style =
-            document.createElement(
-                'style'
-            );
-
-        style.id =
-            'lampa_wtch_tv_hide';
-
-        style.textContent = `
-            .view--trailer,
-            [data-action="trailer"],
-
-            .shots-view-button,
-            .view--shots,
-            .shots-view,
-            [data-action="shots"],
-            [data-action="shorts"],
-
-            .view--torrent,
-            .view--torrents,
-            .torrent-view,
-            .torrent-view-button,
-            .torrent-button,
-
-            [data-action="torrent"],
-            [data-action="torrents"],
-            [data-type="torrent"],
-            [data-type="torrents"],
-
-            .button--torrent,
-
-            .full-start__button[data-subtitle*="торрент"],
-            .full-start__button[data-subtitle*="Torrent"] {
-                display: none !important;
-            }
-        `;
-
-        document.head.appendChild(
-            style
-        );
-    }
-
-    function cleanUI(root) {
-        var scope =
-            root || document;
-
-        safe(function () {
-
-            scope
-                .querySelectorAll(
-                    '.full-start__button, .selector'
-                )
-                .forEach(function (node) {
-
-                    var text =
-                        (
-                            node.textContent ||
-                            ''
-                        )
-                        .replace(/\s+/g, ' ')
-                        .trim()
-                        .toLowerCase();
-
-                    if (
-                        text === 'торренты' ||
-                        text === 'torrent' ||
-                        text === 'torrents'
-                    ) {
-                        node.remove();
-                    }
-
-                });
-
-        });
-    }
-
-    // =========================================================
-    // Убираем Showy PRO popup/banner
-    // =========================================================
-
-    function guardShowy() {
-
-        safe(function () {
-
-            if (
-                !window.ShowyMarketingRuntime
-            ) {
-
-                window.ShowyMarketingRuntime = {
-
-                    start: function () {},
-
-                    context: function () {},
-
-                    trackLinkResolved:
-                        function () {},
-
-                    createWtchInvoice:
-                        function () {
-                            return false;
-                        },
-
-                    registerSourceAdapter:
-                        function () {
-                            return false;
-                        },
-
-                    sourceBase:
-                        function (base) {
-                            return base;
-                        },
-
-                    rewriteSourceUrl:
-                        function (url) {
-                            return url;
-                        },
-
-                    ensureInlinePro:
-                        function (pro, done) {
-
-                            if (
-                                typeof done ===
-                                'function'
-                            ) {
-                                done({
-                                    base: '',
-                                    verified: false,
-                                    changed: false
-                                });
-                            }
-
-                        },
-
-                    isInlineProActive:
-                        function () {
-                            return false;
-                        }
-
-                };
-
-            }
-
-        });
-
-        safe(function () {
-
-            if (
-                !window.ShowyProEntryBanner
-            ) {
-
-                window.ShowyProEntryBanner = {
-
-                    attach: function () {
-
-                        return {
-                            mount: function () {},
-                            destroy: function () {},
-                            ensure: function () {}
-                        };
-
-                    }
-
-                };
-
-            }
-
-        });
-
-    }
-
-    // =========================================================
-    // Скин самого видеоплеера
-    // =========================================================
-
-    function playerSkin() {
-
-        if (
-            document.getElementById(
-                'lampa_wtch_tv_player_css'
-            )
-        ) {
-            return;
-        }
-
-        var style =
-            document.createElement(
-                'style'
-            );
-
-        style.id =
-            'lampa_wtch_tv_player_css';
-
-        style.textContent = `
-
-            .player:not(.iptv) {
-                background:
-                    #08090b !important;
-            }
-
-            .player:not(.iptv) .player-video,
-            .player:not(.iptv) .player-video video {
-                background:
-                    #08090b !important;
-            }
-
-            .player:not(.iptv) .player-panel,
-            .player:not(.iptv) .player-info,
-            .player:not(.iptv) .player-footer {
-                background:
-                    transparent !important;
-            }
-
-            .player:not(.iptv)
-            .player-panel
-            .button {
-                width:
-                    3em;
-
-                height:
-                    3em;
-
-                padding:
-                    .9em;
-            }
-
-            .player:not(.iptv)
-            .player-panel__playpause {
-                padding:
-                    1em !important;
-            }
-
-            .player:not(.iptv)
-            .player-panel__quality {
-                border-radius:
-                    5em !important;
-
-                padding:
-                    0 1em !important;
-            }
-
-            .player:not(.iptv)
-            .player-panel__box-buttons {
-                display:
-                    flex;
-
-                flex-shrink:
-                    0;
-
-                background:
-                    rgba(255,255,255,.09);
-
-                border-radius:
-                    4em;
-            }
-
-            .player:not(.iptv)
-            .player-panel__box-buttons
-            + .player-panel__box-buttons {
-                margin-left:
-                    .45em;
-            }
-
-            .player:not(.iptv)
-            .player-info__title {
-                font-size:
-                    2.15em;
-
-                font-weight:
-                    700;
-
-                line-height:
-                    1.25;
-
-                max-width:
-                    65%;
-
-                text-shadow:
-                    0 2px 12px rgba(0,0,0,.55);
-            }
-
-            .player:not(.iptv)
-            .player-info__values {
-                text-shadow:
-                    0 2px 12px rgba(0,0,0,.55);
-            }
-
-        `;
-
-        document.head.appendChild(
-            style
-        );
-
-    }
-
-    // =========================================================
-    // ОСНОВНОЙ TV SOURCE CENTER
-    // =========================================================
-
-    function injectPickerCSS() {
-
-        if (
-            document.getElementById(
-                'lampa_wtch_tv_picker_css'
-            )
-        ) {
-            return;
-        }
-
-        var style =
-            document.createElement(
-                'style'
-            );
-
-        style.id =
-            'lampa_wtch_tv_picker_css';
-
-        style.textContent = `
-
-            /* =================================================
-               Основное окно
-               ================================================= */
-
-            .wtch-tv-select {
-                min-width:
-                    min(82vw, 76em) !important;
-
-                max-width:
-                    92vw !important;
-
-                background:
-                    #111214 !important;
-
-                border-radius:
-                    18px !important;
-
-                overflow:
-                    hidden !important;
-
-                color:
-                    #f4f5f6 !important;
-            }
-
-            .wtch-tv-select
-            .selectbox__title {
-                padding-bottom:
-                    .6em !important;
-
-                font-size:
-                    1.28em !important;
-
-                font-weight:
-                    760 !important;
-            }
-
-
-            /* =================================================
-               Верхняя панель Source Center
-               ================================================= */
-
-            .wtch-tv-header {
-
-                margin:
-                    0 .8em .65em;
-
-                padding:
-                    .95em;
-
-                border:
-                    1px solid rgba(255,255,255,.08);
-
-                border-radius:
-                    14px;
-
-                background:
-                    #181a1e;
-
-            }
-
-            .wtch-tv-header__eyebrow {
-
-                font-size:
-                    .65em;
-
-                letter-spacing:
-                    .13em;
-
-                text-transform:
-                    uppercase;
-
-                font-weight:
-                    850;
-
-                color:
-                    #747a82;
-
-            }
-
-            .wtch-tv-header__title {
-
-                margin-top:
-                    .12em;
-
-                font-size:
-                    1.55em;
-
-                line-height:
-                    1.1;
-
-                font-weight:
-                    780;
-
-            }
-
-            .wtch-tv-header__route {
-
-                margin-top:
-                    .3em;
-
-                font-size:
-                    .76em;
-
-                color:
-                    #858b94;
-
-            }
-
-
-            /* =================================================
-               Статусные карточки
-               ================================================= */
-
-            .wtch-tv-status {
-
-                display:
-                    grid;
-
-                grid-template-columns:
-                    repeat(5, minmax(0, 1fr));
-
-                gap:
-                    .4em;
-
-                margin-top:
-                    .8em;
-
-            }
-
-            .wtch-tv-status__item {
-
-                min-height:
-                    3.65em;
-
-                display:
-                    flex;
-
-                align-items:
-                    center;
-
-                gap:
-                    .55em;
-
-                padding:
-                    .5em .6em;
-
-                border-radius:
-                    11px;
-
-                background:
-                    #202329;
-
-                border:
-                    1px solid transparent;
-
-            }
-
-            .wtch-tv-status__item.focus {
-
-                background:
-                    #f3f4f5;
-
-                color:
-                    #111214;
-
-                border-color:
-                    #fff;
-
-            }
-
-            .wtch-tv-status__num {
-
-                width:
-                    1.7em;
-
-                height:
-                    1.7em;
-
-                flex:
-                    0 0 auto;
-
-                display:
-                    flex;
-
-                align-items:
-                    center;
-
-                justify-content:
-                    center;
-
-                border-radius:
-                    6px;
-
-                background:
-                    #30343a;
-
-                color:
-                    #fff;
-
-                font-size:
-                    .72em;
-
-                font-weight:
-                    850;
-
-            }
-
-            .wtch-tv-status__item.focus
-            .wtch-tv-status__num {
-
-                background:
-                    #111214;
-
-            }
-
-            .wtch-tv-status__body {
-
-                min-width:
-                    0;
-
-            }
-
-            .wtch-tv-status__label {
-
-                font-size:
-                    .62em;
-
-                color:
-                    #7e848d;
-
-                text-transform:
-                    uppercase;
-
-                font-weight:
-                    750;
-
-            }
-
-            .wtch-tv-status__item.focus
-            .wtch-tv-status__label {
-
-                color:
-                    #646a71;
-
-            }
-
-            .wtch-tv-status__value {
-
-                margin-top:
-                    .12em;
-
-                overflow:
-                    hidden;
-
-                white-space:
-                    nowrap;
-
-                text-overflow:
-                    ellipsis;
-
-                font-size:
-                    .8em;
-
-                font-weight:
-                    700;
-
-            }
-
-            .wtch-tv-header__hint {
-
-                margin-top:
-                    .65em;
-
-                color:
-                    #727982;
-
-                font-size:
-                    .66em;
-
-            }
-
-
-            /* =================================================
-               Обычные пункты
-               ================================================= */
-
-            .wtch-tv-select
-            .selectbox-items,
-
-            .wtch-tv-select
-            .selectbox__items,
-
-            .wtch-tv-select
-            .selectbox__content {
-
-                padding:
-                    .65em !important;
-
-            }
-
-            .wtch-tv-select
-            .selectbox-item.wtch-tv-item {
-
-                min-height:
-                    4.6em !important;
-
-                margin:
-                    .25em 0 !important;
-
-                padding:
-                    .75em .9em !important;
-
-                border:
-                    1px solid transparent !important;
-
-                border-radius:
-                    12px !important;
-
-                background:
-                    #1a1d21 !important;
-
-                color:
-                    #f2f3f4 !important;
-
-            }
-
-            .wtch-tv-select
-            .selectbox-item.wtch-tv-item.focus {
-
-                background:
-                    #f3f4f5 !important;
-
-                color:
-                    #111214 !important;
-
-                border-color:
-                    #fff !important;
-
-            }
-
-            .wtch-tv-select
-            .selectbox-item.wtch-tv-item
-            .selectbox-item__title,
-
-            .wtch-tv-select
-            .selectbox-item.wtch-tv-item
-            .selectbox-item__name,
-
-            .wtch-tv-select
-            .selectbox-item.wtch-tv-item
-            .selectbox-item__text {
-
-                color:
-                    inherit !important;
-
-                font-size:
-                    1.02em !important;
-
-                line-height:
-                    1.3 !important;
-
-                font-weight:
-                    700 !important;
-
-            }
-
-
-            /* =================================================
-               Badge
-               ================================================= */
-
-            .wtch-tv-badge {
-
-                display:
-                    inline-flex !important;
-
-                align-items:
-                    center !important;
-
-                justify-content:
-                    center !important;
-
-                min-width:
-                    2.5em !important;
-
-                height:
-                    1.55em !important;
-
-                padding:
-                    0 .48em !important;
-
-                margin-right:
-                    .5em !important;
-
-                border-radius:
-                    6px !important;
-
-                vertical-align:
-                    middle !important;
-
-                background:
-                    #33373e !important;
-
-                color:
-                    #fff !important;
-
-                font-size:
-                    .67em !important;
-
-                font-weight:
-                    850 !important;
-
-            }
-
-
-            /* =================================================
-               Дополнительная информация
-               ================================================= */
-
-            .wtch-tv-meta {
-
-                margin-top:
-                    .23em;
-
-                color:
-                    #7f858e;
-
-                font-size:
-                    .67em;
-
-                white-space:
-                    nowrap;
-
-                overflow:
-                    hidden;
-
-                text-overflow:
-                    ellipsis;
-
-            }
-
-            .wtch-tv-select
-            .selectbox-item.focus
-            .wtch-tv-meta {
-
-                color:
-                    #60656d;
-
-            }
-
-
-            /* =================================================
-               Источники
-               ================================================= */
-
-            .wtch-tv-select--source
-            .selectbox-items,
-
-            .wtch-tv-select--source
-            .selectbox__items,
-
-            .wtch-tv-select--source
-            .selectbox__content {
-
-                display:
-                    grid !important;
-
-                grid-template-columns:
-                    repeat(2, minmax(0,1fr));
-
-                gap:
-                    .45em;
-
-            }
-
-            .wtch-tv-select--source
-            .selectbox-item.wtch-tv-item {
-
-                margin:
-                    0 !important;
-
-                min-height:
-                    5em !important;
-
-            }
-
-
-            /* =================================================
-               Озвучки
-               ================================================= */
-
-            .wtch-tv-select--voice
-            .selectbox-items,
-
-            .wtch-tv-select--voice
-            .selectbox__items,
-
-            .wtch-tv-select--voice
-            .selectbox__content {
-
-                display:
-                    grid !important;
-
-                grid-template-columns:
-                    repeat(2, minmax(0,1fr));
-
-                gap:
-                    .45em;
-
-            }
-
-            .wtch-tv-select--voice
-            .selectbox-item.wtch-tv-item {
-
-                margin:
-                    0 !important;
-
-                min-height:
-                    4.7em !important;
-
-            }
-
-
-            /* =================================================
-               Сезоны
-               ================================================= */
-
-            .wtch-tv-select--season
-            .selectbox-items,
-
-            .wtch-tv-select--season
-            .selectbox__items,
-
-            .wtch-tv-select--season
-            .selectbox__content {
-
-                display:
-                    grid !important;
-
-                grid-template-columns:
-                    repeat(4, minmax(0,1fr));
-
-                gap:
-                    .45em;
-
-            }
-
-            .wtch-tv-select--season
-            .selectbox-item.wtch-tv-item {
-
-                margin:
-                    0 !important;
-
-                min-height:
-                    4em !important;
-
-                text-align:
-                    center !important;
-
-            }
-
-
-            /* =================================================
-               Качество
-               ================================================= */
-
-            .wtch-tv-select--quality
-            .selectbox-items,
-
-            .wtch-tv-select--quality
-            .selectbox__items,
-
-            .wtch-tv-select--quality
-            .selectbox__content {
-
-                display:
-                    grid !important;
-
-                grid-template-columns:
-                    repeat(5, minmax(0,1fr));
-
-                gap:
-                    .45em;
-
-            }
-
-            .wtch-tv-select--quality
-            .selectbox-item.wtch-tv-item {
-
-                margin:
-                    0 !important;
-
-                min-height:
-                    4em !important;
-
-                text-align:
-                    center !important;
-
-            }
-
-
-            /* =================================================
-               Вернуться к сериям
-               ================================================= */
-
-            .wtch-tv-back {
-
-                display:
-                    flex;
-
-                align-items:
-                    center;
-
-                gap:
-                    .65em;
-
-                min-height:
-                    3.8em;
-
-                margin:
-                    .2em 0 .5em;
-
-                padding:
-                    .65em .8em;
-
-                border-radius:
-                    11px;
-
-                background:
-                    #191b1f;
-
-                border:
-                    1px solid transparent;
-
-            }
-
-            .wtch-tv-back.focus {
-
-                background:
-                    #f3f4f5;
-
-                color:
-                    #111214;
-
-                border-color:
-                    #fff;
-
-            }
-
-            .wtch-tv-back__icon {
-
-                width:
-                    1.65em;
-
-                height:
-                    1.65em;
-
-                display:
-                    flex;
-
-                align-items:
-                    center;
-
-                justify-content:
-                    center;
-
-                border-radius:
-                    6px;
-
-                background:
-                    #30343a;
-
-                color:
-                    #fff;
-
-            }
-
-            .wtch-tv-back b,
-            .wtch-tv-back small {
-
-                display:
-                    block;
-
-            }
-
-            .wtch-tv-back b {
-
-                font-size:
-                    .86em;
-
-            }
-
-            .wtch-tv-back small {
-
-                margin-top:
-                    .12em;
-
-                font-size:
-                    .64em;
-
-                color:
-                    #7f858e;
-
-            }
-
-
-            /* =================================================
-               Адаптив
-               ================================================= */
-
-            @media (max-width:1100px) {
-
-                .wtch-tv-status {
-
-                    grid-template-columns:
-                        repeat(3,minmax(0,1fr));
-
-                }
-
-                .wtch-tv-select--season
-                .selectbox-items,
-
-                .wtch-tv-select--season
-                .selectbox__items,
-
-                .wtch-tv-select--season
-                .selectbox__content {
-
-                    grid-template-columns:
-                        repeat(3,minmax(0,1fr));
-
-                }
-
-                .wtch-tv-select--quality
-                .selectbox-items,
-
-                .wtch-tv-select--quality
-                .selectbox__items,
-
-                .wtch-tv-select--quality
-                .selectbox__content {
-
-                    grid-template-columns:
-                        repeat(3,minmax(0,1fr));
-
-                }
-
-            }
-
-
-            @media (max-width:720px) {
-
-                .wtch-tv-status {
-
-                    grid-template-columns:
-                        repeat(2,minmax(0,1fr));
-
-                }
-
-                .wtch-tv-select--source
-                .selectbox-items,
-
-                .wtch-tv-select--source
-                .selectbox__items,
-
-                .wtch-tv-select--source
-                .selectbox__content,
-
-                .wtch-tv-select--voice
-                .selectbox-items,
-
-                .wtch-tv-select--voice
-                .selectbox__items,
-
-                .wtch-tv-select--voice
-                .selectbox__content {
-
-                    grid-template-columns:
-                        1fr;
-
-                }
-
-                .wtch-tv-select--season
-                .selectbox-items,
-
-                .wtch-tv-select--season
-                .selectbox__items,
-
-                .wtch-tv-select--season
-                .selectbox__content,
-
-                .wtch-tv-select--quality
-                .selectbox-items,
-
-                .wtch-tv-select--quality
-                .selectbox__items,
-
-                .wtch-tv-select--quality
-                .selectbox__content {
-
-                    grid-template-columns:
-                        repeat(2,minmax(0,1fr));
-
-                }
-
-            }
-
-        `;
-
-        document.head.appendChild(
-            style
-        );
-    }
-
-    // =========================================================
-    // Реальные кнопки WTCH
-    // =========================================================
-
-    function sourceButton() {
-        return $(
-            '.filter--sort'
-        ).first();
-    }
-
-    function filterButton() {
-        return $(
-            '.filter--filter'
-        ).first();
-    }
-
-    function currentSourceLabel() {
-
-        var b =
-            sourceButton();
-
-        if (!b.length) return '';
-
-        return (
-            b.find('span').first().text() ||
-            b.text() ||
-            ''
-        )
-            .replace(/\s+/g, ' ')
-            .trim();
-    }
-
-    function currentFilterLabel() {
-
-        var b =
-            filterButton();
-
-        if (!b.length) return '';
-
-        return (
-            b.find('span').first().text() ||
-            b.text() ||
-            ''
-        )
-            .replace(/\s+/g, ' ')
-            .trim();
-    }
-
-    // =========================================================
-    // Определяем какой SelectBox открыт
-    // =========================================================
-
-    function pickerMode($select) {
-
-        var title = (
-            $select
-                .find(
-                    '.selectbox__title'
-                )
-                .first()
-                .text() ||
-            ''
-        )
-            .replace(/\s+/g, ' ')
-            .trim();
-
-        var text = (
-            $select.text() ||
-            ''
-        )
-            .replace(/\s+/g, ' ')
-            .trim();
-
-        // Главный фильтр.
-        if (
-            /фильтр|filter/i.test(
-                title
-            )
-        ) {
-            return 'filter';
-        }
-
-        if (
-            /reset|сброс/i.test(text) &&
-            /сезон|season|озвуч|voice/i.test(text)
-        ) {
-            return 'filter';
-        }
-
-        // Сезон
-        if (
-            /сезон|season/i.test(
-                title
-            )
-        ) {
-            return 'season';
-        }
-
-        // Озвучка
-        if (
-            /озвуч|voice|перевод|аудио/i.test(
-                title
-            )
-        ) {
-            return 'voice';
-        }
-
-        // Качество
-        if (
-            /качество|quality/i.test(
-                title
-            )
-        ) {
-            return 'quality';
-        }
-
-        // Источник
-        if (
-            /источник|source|провайдер|балансер|balanser/i.test(
-                title
-            )
-        ) {
-            return 'source';
-        }
-
-        // Некоторые версии Lampa используют
-        // нейтральный заголовок.
-        if (
-            /сезон|season/i.test(text) &&
-            /озвуч|voice/i.test(text)
-        ) {
-            return 'filter';
-        }
-
-        if (
-            /4k|2160|1080|720|fhd|hd/i.test(text) &&
-            !/сезон|season|источник|source/i.test(title)
-        ) {
-            return 'quality';
-        }
-
-        if (
-            /rezka|filmix|z01/i.test(text) &&
-            sourceButton().length
-        ) {
-            return 'source';
-        }
-
-        return 'unknown';
-    }
-
-    // =========================================================
-    // Badge
-    // =========================================================
-
-    function makeBadge(
-        $item,
-        value
-    ) {
-
-        if (!value) return;
-
-        if (
-            $item.find(
-                '.wtch-tv-badge'
-            ).length
-        ) {
-
-            $item
-                .find(
-                    '.wtch-tv-badge'
-                )
-                .first()
-                .text(value);
-
-            return;
-        }
-
-        var badge = $(
-            '<span class="wtch-tv-badge"></span>'
-        )
-            .text(value);
-
-        var target =
-            $item.find(
-                '.selectbox-item__title,' +
-                '.selectbox-item__name,' +
-                '.selectbox-item__text'
-            )
-            .first();
-
-        if (!target.length) {
-            target =
-                $item.children().first();
-        }
-
-        if (target.length) {
-            target.prepend(
-                badge
-            );
-        } else {
-            $item.prepend(
-                badge
-            );
-        }
-
-    }
-
-    // =========================================================
-    // Оформляем конкретные пункты
-    // =========================================================
-
-    function decorateItems(
-        $select,
-        mode
-    ) {
-
-        $select
-            .find(
-                '.selectbox-item'
-            )
-            .each(function () {
-
-                var item =
-                    $(this);
-
-                item.addClass(
-                    'wtch-tv-item'
-                );
-
-                var text =
-                    (
-                        item.text() ||
-                        ''
-                    )
-                        .replace(
-                            /\s+/g,
-                            ' '
-                        )
-                        .trim();
-
-                item
-                    .find(
-                        '.wtch-tv-meta'
-                    )
-                    .remove();
-
-                var q =
-                    qualityOf(text);
-
-                // -------------------------------------------------
-                // SOURCE
-                // -------------------------------------------------
-
+      }
+    });
+
+    safe(function () {
+      if (!window.ShowyProEntryBanner) {
+        window.ShowyProEntryBanner = {
+          attach: function () {
+            return {
+              mount: function () {},
+              destroy: function () {},
+              ensure: function () {}
+            };
+          },
+          version: 'disabled-by-guard'
+        };
+      }
+    });
+  }
+
+  // =========================================================
+  // 4. Следим за изменением интерфейса Lampa
+  // =========================================================
+
+  function installUiCleaner() {
+    if (window.lampa_wtch_unified_ui_cleaner) return;
+
+    window.lampa_wtch_unified_ui_cleaner = true;
+
+    safe(function () {
+      if (
+        window.Lampa &&
+        window.Lampa.Listener
+      ) {
+        Lampa.Listener.follow('full', function (e) {
+
+          if (
+            e.type === 'complite' ||
+            e.type === 'complete'
+          ) {
+            setTimeout(function () {
+
+              var root = document;
+
+              safe(function () {
                 if (
-                    mode === 'source'
+                  e.object &&
+                  e.object.activity &&
+                  typeof e.object.activity.render === 'function'
                 ) {
-
-                    makeBadge(
-                        item,
-                        q ||
-                        (
-                            /vip|premium|премиум/i.test(text)
-                                ? 'VIP'
-                                : ''
-                        )
-                    );
-
-                    item.append(
-                        $('<div class="wtch-tv-meta"></div>')
-                            .text(
-                                /filmix|rezka/i.test(text)
-                                    ? 'Онлайн • источник'
-                                    : 'Онлайн'
-                            )
-                    );
-
+                  root = e.object.activity.render();
                 }
+              });
 
-                // -------------------------------------------------
-                // VOICE
-                // -------------------------------------------------
+              removeUnwantedUI(root);
 
-                else if (
-                    mode === 'voice'
-                ) {
+            }, 50);
+          }
+        });
+      }
+    });
 
-                    makeBadge(
-                        item,
-                        voiceKind(text)
-                    );
-
-                    item.append(
-                        $('<div class="wtch-tv-meta"></div>')
-                            .text(
-                                q ||
-                                'Нажмите OK для выбора'
-                            )
-                    );
-
-                }
-
-                // -------------------------------------------------
-                // SEASON
-                // -------------------------------------------------
-
-                else if (
-                    mode === 'season'
-                ) {
-
-                    var n =
-                        text.match(
-                            /\d+/
-                        );
-
-                    if (n) {
-
-                        makeBadge(
-                            item,
-                            'S' +
-                            parseInt(
-                                n[0],
-                                10
-                            )
-                        );
-
-                    }
-
-                }
-
-                // -------------------------------------------------
-                // QUALITY
-                // -------------------------------------------------
-
-                else if (
-                    mode === 'quality'
-                ) {
-
-                    makeBadge(
-                        item,
-                        q || text
-                    );
-
-                }
-
-            });
-
-    }
-
-    function valueOrFallback(
-        value,
-        fallback
+    // MutationObserver
+    if (
+      window.MutationObserver &&
+      !window.lampa_wtch_unified_observer
     ) {
-        return value ||
-            fallback;
-    }
-
-    // =========================================================
-    // Карточка статуса
-    // =========================================================
-
-    function addStatusItem(
-        $row,
-        num,
-        label,
-        value,
-        action
-    ) {
-
-        var item = $(`
-
-            <div
-                class="wtch-tv-status__item selector"
-                data-wtch-action="${action}"
-            >
-
-                <span
-                    class="wtch-tv-status__num"
-                >
-                    ${num}
-                </span>
-
-                <span
-                    class="wtch-tv-status__body"
-                >
-
-                    <span
-                        class="wtch-tv-status__label"
-                    ></span>
-
-                    <span
-                        class="wtch-tv-status__value"
-                    ></span>
-
-                </span>
-
-            </div>
-
-        `);
-
-        item
-            .find(
-                '.wtch-tv-status__label'
-            )
-            .text(label);
-
-        item
-            .find(
-                '.wtch-tv-status__value'
-            )
-            .text(value);
-
-        $row.append(
-            item
-        );
-
-        return item;
-    }
-
-    // =========================================================
-    // Закрыть меню и вернуться к сериям
-    // =========================================================
-
-    function closeToEpisodes() {
-
-        safe(function () {
-
-            if (
-                Lampa.Select &&
-                Lampa.Select.close
-            ) {
-                Lampa.Select.close();
-            }
-
-            if (
-                Lampa.Controller &&
-                Lampa.Controller.toggle
-            ) {
-                Lampa.Controller.toggle(
-                    'content'
-                );
-            }
-
+      window.lampa_wtch_unified_observer =
+        new MutationObserver(function () {
+          removeUnwantedUI(document);
         });
 
-        setTimeout(
-            function () {
-
-                safe(function () {
-
-                    var item = $(
-                        '.online-prestige__full.focus,' +
-                        '.online-prestige__file.focus,' +
-                        '.online-prestige__folder.focus'
-                    )
-                        .first();
-
-                    if (!item.length) {
-
-                        item = $(
-                            '.online-prestige__full,' +
-                            '.online-prestige__file,' +
-                            '.online-prestige__folder'
-                        )
-                            .first();
-
-                    }
-
-                    if (
-                        item.length &&
-                        Lampa.Controller &&
-                        Lampa.Controller.collectionFocus
-                    ) {
-
-                        Lampa.Controller.collectionFocus(
-                            item[0],
-                            item.closest(
-                                '.scroll'
-                            )
-                                .find(
-                                    '.scroll__body'
-                                )[0] ||
-                            document.body
-                        );
-
-                    }
-
-                });
-
-            },
-            70
+      safe(function () {
+        window.lampa_wtch_unified_observer.observe(
+          document.documentElement,
+          {
+            childList: true,
+            subtree: true
+          }
         );
-
+      });
     }
+  }
 
-    // =========================================================
-    // Открытие настоящих Z01 меню
-    // =========================================================
+  // =========================================================
+  // 4.5. Встроенный редизайн плеера
+  // =========================================================
+  //
+  // Тёмный градиент поверх видео, перегруппировка кнопок панели
+  // управления в компактные "капсулы" и укрупнённый заголовок ролика.
+  // Как и в исходном скине: не трогаем IPTV-плеер (.player.iptv) и
+  // пропускаем мобильную платформу / уже обновлённые сборки приложения
+  // (app_digital > 328), где такой вид может быть уже встроен нативно.
 
-    function openSource() {
+  function installPlayerSkin() {
+    if (window.lampa_wtch_player_skin_installed) return;
+    window.lampa_wtch_player_skin_installed = true;
 
-        var b =
-            sourceButton();
+    safe(function () {
+      if (
+        !window.Lampa ||
+        !window.Lampa.Player ||
+        !window.Lampa.Platform ||
+        typeof window.$ === 'undefined'
+      ) {
+        return;
+      }
 
-        if (
-            b.length
-        ) {
-            b.trigger(
-                'hover:enter'
-            );
+      if (
+        Lampa.Platform.screen('mobile') ||
+        (Lampa.Manifest && Lampa.Manifest.app_digital > 328)
+      ) {
+        return;
+      }
+
+      if (!document.getElementById('lampa_wtch_player_skin_css')) {
+        var style = document.createElement('style');
+        style.id = 'lampa_wtch_player_skin_css';
+        style.innerHTML = '.player-video__overlay{display:none;background:-webkit-gradient(linear,left top,left bottom,from(rgba(0,0,0,0.5)),color-stop(53%,rgba(0,0,0,0.3)),to(rgba(11,13,16,0.8)));background:-webkit-linear-gradient(top,rgba(0,0,0,0.5) 0,rgba(0,0,0,0.3) 53%,rgba(11,13,16,0.8) 100%);background:-moz-linear-gradient(top,rgba(0,0,0,0.5) 0,rgba(0,0,0,0.3) 53%,rgba(11,13,16,0.8) 100%);background:-o-linear-gradient(top,rgba(0,0,0,0.5) 0,rgba(0,0,0,0.3) 53%,rgba(11,13,16,0.8) 100%);background:linear-gradient(to bottom,rgba(0,0,0,0.5) 0,rgba(0,0,0,0.3) 53%,rgba(11,13,16,0.8) 100%);position:absolute;top:0;left:0;width:100%;height:100%}.player:not(.iptv) .player-panel,.player:not(.iptv) .player-info,.player:not(.iptv) .player-footer{background:transparent !important;-webkit-backdrop-filter:unset !important;backdrop-filter:unset !important}.player:not(.iptv) .player-panel__body,.player:not(.iptv) .player-info__body,.player:not(.iptv) .player-footer__body{padding:0}.player:not(.iptv) .player-footer__row{padding:0}.player:not(.iptv) .head-backward{display:none !important}.player:not(.iptv) .player-info__body{padding-left:0 !important;position:relative}.player:not(.iptv) .player-info__name{font-size:1.2em;text-shadow:0 0 .2em rgba(0,0,0,0.5)}.player:not(.iptv) .player-info__title{font-size:2.4em;font-weight:600;line-height:1.4;width:60%;text-shadow:0 0 .2em rgba(0,0,0,0.5);overflow:hidden;-o-text-overflow:\'.\';text-overflow:\'.\';display:-webkit-box;-webkit-line-clamp:2;line-clamp:2;-webkit-box-orient:vertical}.player:not(.iptv) .player-info__values{text-shadow:0 0 .2em rgba(0,0,0,0.5)}.player:not(.iptv) .player-info__values .value--name span{font-weight:600}.player:not(.iptv) .player-info__time{position:absolute;top:.8em;right:0}.player:not(.iptv) .player-panel .button{padding:.9em;width:3em;height:3em}.player:not(.iptv) .player-panel .button.animate-trigger-enter{-webkit-animation:animation-trigger-enter .2s forwards;-moz-animation:animation-trigger-enter .2s forwards;-o-animation:animation-trigger-enter .2s forwards;animation:animation-trigger-enter .2s forwards}.player:not(.iptv) .player-panel .button>svg{width:1.2em;height:1.2em}.player:not(.iptv) .player-panel .button+.button{margin-left:0}.player:not(.iptv) .player-panel__playpause{margin:0;padding:1em !important}.player:not(.iptv) .player-panel__playpause:not(.focus){background:rgba(255,255,255,0.1)}.player:not(.iptv) .player-panel__quality{-webkit-border-radius:5em !important;border-radius:5em !important;padding:0 1em !important}.player:not(.iptv) .player-panel__timeline{margin-bottom:1em}.player:not(.iptv) .player-panel__timeline:not(.focus) .player-panel__position>div::after{display:none}.player:not(.iptv) .player-panel__line-one{margin-bottom:1em;position:relative;z-index:2;text-shadow:0 0 .2em rgba(0,0,0,0.5)}.player:not(.iptv) .player-panel__box-buttons{-webkit-flex-shrink:0;-ms-flex-negative:0;flex-shrink:0;display:-webkit-box;display:-webkit-flex;display:-moz-box;display:-ms-flexbox;display:flex;background:rgba(255,255,255,0.1);-webkit-border-radius:4em;border-radius:4em}.player:not(.iptv) .player-panel__box-buttons+.player-panel__box-buttons{margin-left:.5em}.player:not(.iptv) .player-panel__next,.player:not(.iptv) .player-panel__prev{padding:1.1em !important}.player:not(.iptv) .player-panel__next>svg,.player:not(.iptv) .player-panel__prev>svg{width:.8em;height:.8em}.player:not(.iptv) .player-panel__playlist{text-align:center}.player:not(.iptv) .player-panel__playlist>svg{width:1em !important}.player:not(.iptv) .player-video__paused,.player:not(.iptv) .player-video__loader{background-color:rgba(255,255,255,0.1)}.player:not(.iptv) .player-info__values .value--size span{background:rgba(255,255,255,0.1);-webkit-border-radius:1em;border-radius:1em}.player:not(.iptv).player--panel-visible .player-video__overlay{display:block;-webkit-animation:animation-opacity .3s;-moz-animation:animation-opacity .3s;-o-animation:animation-opacity .3s;animation:animation-opacity .3s}.normalization{background:rgba(255,255,255,0.1);-webkit-border-radius:1em;border-radius:1em}.normalization canvas{-webkit-border-radius:1em;border-radius:1em}body.platform--browser .player:not(.iptv) .player-panel__box-buttons,body.platform--browser .player:not(.iptv) .player-panel__playpause:not(.focus),body.platform--browser .player:not(.iptv) .player-info__values .value--size span,body.platform--nw .player:not(.iptv) .player-panel__box-buttons,body.platform--nw .player:not(.iptv) .player-panel__playpause:not(.focus),body.platform--nw .player:not(.iptv) .player-info__values .value--size span,body.glass--style.platform--apple .player:not(.iptv) .player-panel__box-buttons,body.glass--style.platform--apple .player:not(.iptv) .player-panel__playpause:not(.focus),body.glass--style.platform--apple .player:not(.iptv) .player-info__values .value--size span,body.glass--style.platform--apple_tv .player:not(.iptv) .player-panel__box-buttons,body.glass--style.platform--apple_tv .player:not(.iptv) .player-panel__playpause:not(.focus),body.glass--style.platform--apple_tv .player:not(.iptv) .player-info__values .value--size span,body.glass--style.platform--android .player:not(.iptv) .player-panel__box-buttons,body.glass--style.platform--android .player:not(.iptv) .player-panel__playpause:not(.focus),body.glass--style.platform--android .player:not(.iptv) .player-info__values .value--size span{-webkit-backdrop-filter:blur(1em);backdrop-filter:blur(1em)}body.platform--browser .normalization,body.platform--browser .player-video__paused,body.platform--browser .player-video__loader,body.platform--nw .normalization,body.platform--nw .player-video__paused,body.platform--nw .player-video__loader,body.glass--style.platform--apple .normalization,body.glass--style.platform--apple .player-video__paused,body.glass--style.platform--apple .player-video__loader,body.glass--style.platform--apple_tv .normalization,body.glass--style.platform--apple_tv .player-video__paused,body.glass--style.platform--apple_tv .player-video__loader,body.glass--style.platform--android .normalization,body.glass--style.platform--android .player-video__paused,body.glass--style.platform--android .player-video__loader{background-color:rgba(255,255,255,0.1);-webkit-backdrop-filter:blur(1em);backdrop-filter:blur(1em)}';
+        document.head.appendChild(style);
+      }
+
+      var render = $(Lampa.Player.render());
+      var title = $('<div class="player-info__title"></div>');
+      var value = $('<div class="value--name"><span></span></div>');
+
+      render.find('.player-video__display').after($('<div class="player-video__overlay"></div>'));
+      render.find('.player-panel__center').find('.button:not(.player-panel__playpause)').remove();
+      render.find('.player-panel__timeline').before(render.find('.player-panel__line-one'));
+      render.find('.player-info .player-info__line').before(title);
+      render.find('.value--size').after(value);
+
+      var box = $('<div class="player-panel__box-buttons"></div>');
+      var right_panel = render.find('.player-panel__right');
+      var left_panel = render.find('.player-panel__left');
+
+      var right_box_quality = box.clone();
+      var right_box_main = box.clone();
+      var right_box_audio = box.clone();
+      var left_box_main = box.clone();
+
+      right_panel.append(right_box_audio);
+      right_panel.append(right_box_quality);
+      right_panel.append(right_box_main);
+
+      right_box_main.append(right_panel.find('.button'));
+      right_box_quality.append(right_panel.find('.player-panel__quality'));
+      right_box_audio.append(right_panel.find('.player-panel__flow'));
+      right_box_audio.append(right_panel.find('.player-panel__subs'));
+      right_box_audio.append(right_panel.find('.player-panel__tracks'));
+
+      left_panel.prepend(left_box_main);
+      left_box_main.append(left_panel.find('.button'));
+
+      Lampa.Player.listener.follow('start', function (data) {
+        var name = data.title;
+        var head = '';
+
+        if (!data.iptv) {
+          if (data.card) {
+            head = data.card.title || data.card.name;
+          } else if (Lampa.Activity.active().movie) {
+            head = Lampa.Activity.active().movie.title || Lampa.Activity.active().movie.name;
+          }
         }
 
-    }
+        if (!head) head = name;
 
-    function openFilter() {
+        title.text(head).toggleClass('hide', Boolean(data.iptv));
 
-        var b =
-            filterButton();
+        render.find('.player-info__name').toggleClass('hide', true);
 
-        if (
-            b.length
-        ) {
-            b.trigger(
-                'hover:enter'
-            );
+        value.toggleClass('hide', Boolean(name == head)).find('span').text(name);
+      });
+    });
+  }
+
+  // =========================================================
+  // 4.6. Скин экрана выбора источника / сезона / серии / озвучки
+  // =========================================================
+  //
+  // ВАЖНО: реальный скрипт поиска озвучек, который грузит этот плагин
+  // (SCRIPT_URL = http://wtch.ch/m), регистрирует компонент с именем
+  // "wtch" и рисует список классическими карточками ".online-prestige"
+  // + стандартным Lampa selectbox для источника/сезона/озвучки. Никакого
+  // "плиточного" интерфейса (классы mo-seg/mo-tile и т.п. из Z01UI) в
+  // нём нет — это была особенность другого скрипта (z01.online), а не
+  // того, что реально подключено. Поэтому прошлая версия темы целилась
+  // в несуществующие классы и визуально ничего не меняла.
+  //
+  // Ниже — тема под РЕАЛЬНУЮ разметку wtch: карточки серий/сезонов
+  // покрупнее и с акцентной подсветкой фокуса, тот же стиль для
+  // selectbox'а источника/сезона/озвучки (см. installSourceFilterShortcut
+  // ниже — он же навешивает класс "wtch-source-select" только на экране
+  // этого плагина, остальные меню приложения не трогаются).
+  //
+  // Правила помечены !important: стиль самого скрипта wtch тоже
+  // подключается собственным <style> при старте плагина, и порядок
+  // добавления двух независимых скриптов в документ заранее не известен —
+  // так наша тема гарантированно перекрывает исходную в любом случае.
+
+  function installSourceSkin() {
+    if (window.lampa_wtch_source_skin_installed) return;
+    window.lampa_wtch_source_skin_installed = true;
+
+    safe(function () {
+      if (
+        !window.Lampa ||
+        !window.Lampa.Platform ||
+        typeof window.$ === 'undefined'
+      ) {
+        return;
+      }
+
+      // Тема рассчитана на экран телевизора — на телефоне не трогаем.
+      if (Lampa.Platform.screen('mobile')) return;
+
+      if (document.getElementById('lampa_wtch_source_skin_css')) return;
+
+      var style = document.createElement('style');
+      style.id = 'lampa_wtch_source_skin_css';
+
+      style.innerHTML = `
+        /* ===== Карточки серий / сезонов (.online-prestige) ===== */
+        .online-prestige {
+          border-radius: .6em !important;
+          background-color: rgba(255,255,255,.07) !important;
+          transition: transform .15s ease, box-shadow .15s ease, background .15s ease;
+        }
+        .online-prestige__img,
+        .online-prestige__img > img {
+          border-radius: .5em !important;
+        }
+        .online-prestige__title {
+          font-size: 1.35em !important;
+        }
+        .online-prestige__time,
+        .online-prestige__quality {
+          font-size: .95em !important;
+          opacity: .7;
+        }
+        /* У скрипта фокус нарисован через ::after с белой рамкой —
+           оставляем этот приём (чтобы не спорить с их же анимацией),
+           просто делаем рамку акцентной и добавляем лёгкое увеличение. */
+        .online-prestige.focus {
+          background-color: rgba(255,255,255,.07) !important;
+          transform: scale(1.015);
+          transition: transform .15s ease;
+        }
+        .online-prestige.focus::after {
+          border-color: #7cc4ff !important;
+          border-width: .22em !important;
+          box-shadow: 0 .6em 1.6em rgba(0,0,0,.45);
+        }
+        .online-prestige-watched {
+          border-radius: .6em !important;
+          background-color: rgba(255,255,255,.06) !important;
+        }
+        .online-empty__button {
+          border-radius: 2.4em !important;
+          padding: .7em 1.6em !important;
+          font-size: 1.1em !important;
+          transition: transform .15s ease, box-shadow .15s ease;
+        }
+        .online-empty__button.focus {
+          transform: scale(1.06);
+          box-shadow: 0 0 0 .16em #7cc4ff !important;
         }
 
-    }
-
-    function openQuality() {
-
-        var b =
-            $(
-                '.player-panel__quality:visible'
-            )
-                .first();
-
-        if (
-            b.length
-        ) {
-
-            b.trigger(
-                'hover:enter'
-            );
-
-        } else if (
-            Lampa.Noty &&
-            Lampa.Noty.show
-        ) {
-
-            Lampa.Noty.show(
-                'Качество доступно после запуска видео'
-            );
-
+        /* ===== Панель фильтра (кнопки Источник / Фильтр / Поиск) ===== */
+        .torrent-filter .simple-button--filter {
+          border-radius: 2.4em !important;
+          padding: .8em 1.4em !important;
+          font-size: 1.05em !important;
+          transition: transform .15s ease, box-shadow .15s ease;
+        }
+        .torrent-filter .simple-button--filter.focus {
+          transform: scale(1.05);
+          box-shadow: 0 0 0 .16em #7cc4ff !important;
         }
 
-    }
-
-    // =========================================================
-    // Верхняя панель выбора
-    // =========================================================
-
-    function addHeader(
-        $select
-    ) {
-
-        if (
-            $select.find(
-                '.wtch-tv-header'
-            ).length
-        ) {
-            return;
+        /* ===== Наша панель быстрого доступа (см. installSourceQuickBar) ===== */
+        .wtch-quickbar {
+          display: -webkit-box; display: -webkit-flex; display: flex;
+          -webkit-flex-wrap: wrap; flex-wrap: wrap;
+          margin: 0 0 1.3em 0;
+        }
+        .wtch-quickbar__item {
+          display: -webkit-box; display: -webkit-flex; display: flex;
+          -webkit-box-align: center; -webkit-align-items: center; align-items: center;
+          min-width: 9.5em;
+          padding: .75em 1.3em;
+          margin: 0 .6em .6em 0;
+          border-radius: 2.4em;
+          background: rgba(255,255,255,.1);
+          -webkit-backdrop-filter: blur(1em);
+          backdrop-filter: blur(1em);
+          cursor: pointer;
+          transition: transform .15s ease, box-shadow .15s ease, background .15s ease;
+        }
+        .wtch-quickbar__icon {
+          width: 1.3em; height: 1.3em;
+          margin-right: .6em;
+          -webkit-flex-shrink: 0; flex-shrink: 0;
+          opacity: .85;
+        }
+        .wtch-quickbar__icon svg { width: 100%; height: 100%; display: block; }
+        .wtch-quickbar__label { font-size: 1.05em; font-weight: 500; white-space: nowrap; }
+        .wtch-quickbar__item.focus {
+          background: #fff; color: #0b0d10;
+          transform: scale(1.06);
+          box-shadow: 0 0 0 .16em #7cc4ff, 0 .5em 1.4em rgba(0,0,0,.4);
         }
 
-        var state =
-            z01Choice();
+        /* ===== Классический selectbox для источника / сезона / озвучки ===== */
+        /* Класс "wtch-source-select" навешивается только пока активен   */
+        /* экран поиска озвучек — остальные меню приложения не трогаются. */
+        .wtch-source-select.selectbox { border-radius: 1em !important; }
+        .wtch-source-select .selectbox__title { font-size: 1.3em !important; font-weight: 600 !important; }
+        .wtch-source-select .selectbox-item {
+          min-height: 3.4em !important;
+          padding: .8em 1.2em !important;
+          border-radius: .8em !important;
+          margin-bottom: .3em !important;
+          transition: transform .15s ease, box-shadow .15s ease, background .15s ease;
+        }
+        .wtch-source-select .selectbox-item.focus {
+          background: #fff !important;
+          color: #0b0d10 !important;
+          transform: scale(1.03);
+          box-shadow: 0 0 0 .14em #7cc4ff, 0 .5em 1.2em rgba(0,0,0,.4) !important;
+        }
+      `;
 
-        var mem =
-            memory();
+      document.head.appendChild(style);
+    });
+  }
 
-        var source =
-            currentSourceLabel() ||
-            state.source ||
-            'Автовыбор';
+  // =========================================================
+  // 4.7. Быстрый выбор источника в классическом режиме
+  // =========================================================
+  //
+  // Кнопка смены источника у wtch не спрятана (в отличие от z01), но
+  // модуль всё равно оставлен: он безопасен (просто ничего не делает,
+  // если кнопка уже видна) и добавляет пункт "Источник" прямо в меню
+  // фильтра — плюс помечает открывшееся меню классом для темы из 4.6,
+  // когда активен экран поиска озвучек (компонент "wtch" или "lampac_z" —
+  // поддерживаем оба на случай, если вы когда-нибудь подключите второй
+  // скрипт).
 
-        var season =
-            state.season !== undefined
-                ? 'Сезон ' +
-                  (
-                      parseInt(
-                          state.season,
-                          10
-                      ) + 1
-                  )
-                : (
-                    mem.season ||
-                    'Автовыбор'
-                );
+  var WTCH_SOURCE_COMPONENTS = ['wtch', 'lampac_z'];
 
-        var voice =
-            state.voice_name ||
-            mem.voice ||
-            'Автовыбор';
+  function isSourceComponentActive() {
+    var active = safe(function () {
+      return Lampa.Activity.active();
+    });
 
-        var quality =
-            mem.quality ||
-            qualityOf(
-                $(
-                    '.player-panel__quality:visible'
-                )
-                    .first()
-                    .text()
-            ) ||
-            'Плеер';
+    if (!active || !active.component) return false;
 
-        var header = $(`
+    return WTCH_SOURCE_COMPONENTS.indexOf(String(active.component).toLowerCase()) !== -1;
+  }
 
-            <div
-                class="wtch-tv-header"
-            >
+  function installSourceFilterShortcut() {
+    if (window.lampa_wtch_source_shortcut_installed) return;
+    window.lampa_wtch_source_shortcut_installed = true;
 
-                <div
-                    class="wtch-tv-header__eyebrow"
-                >
-                    Z01 ONLINE
-                </div>
+    safe(function () {
+      if (
+        !window.Lampa ||
+        !window.Lampa.Controller ||
+        !window.Lampa.Controller.listener ||
+        typeof window.$ === 'undefined'
+      ) {
+        return;
+      }
 
-                <div
-                    class="wtch-tv-header__title"
-                >
-                    Центр выбора
-                </div>
+      Lampa.Controller.listener.follow('toggle', function (event) {
+        if (event.name !== 'select') return;
+        if (!isSourceComponentActive()) return;
 
-                <div
-                    class="wtch-tv-header__route"
-                >
-                    Источник → сезон → озвучка → серия → качество
-                </div>
+        // Метим меню экрана wtch своим классом — тема из installSourceSkin()
+        // применяется только к нему и не трогает остальные меню приложения.
+        $('body > .selectbox').addClass('wtch-source-select');
 
-                <div
-                    class="wtch-tv-status"
-                ></div>
+        var $filterTitle = $('.selectbox__title');
 
-                <div
-                    class="wtch-tv-header__hint"
-                >
-                    OK — открыть раздел · стрелки — перемещение · Back — назад
-                </div>
-
-            </div>
-
-        `);
-
-        var row =
-            header.find(
-                '.wtch-tv-status'
-            );
-
-        addStatusItem(
-            row,
-            1,
-            'Источник',
-            valueOrFallback(
-                source,
-                'Автовыбор'
-            ),
-            'source'
-        );
-
-        addStatusItem(
-            row,
-            2,
-            'Сезон',
-            valueOrFallback(
-                season,
-                'Автовыбор'
-            ),
-            'filter'
-        );
-
-        addStatusItem(
-            row,
-            3,
-            'Озвучка',
-            valueOrFallback(
-                voice,
-                'Автовыбор'
-            ),
-            'filter'
-        );
-
-        addStatusItem(
-            row,
-            4,
-            'Серия',
-            'Продолжить список',
-            'episodes'
-        );
-
-        addStatusItem(
-            row,
-            5,
-            'Качество',
-            quality,
-            'quality'
-        );
-
-        // -----------------------------------------------------
-        // Пульт
-        // -----------------------------------------------------
-
-        header.on(
-            'hover:enter',
-            '.wtch-tv-status__item',
-            function () {
-
-                var action =
-                    $(this).attr(
-                        'data-wtch-action'
-                    );
-
-                if (
-                    action ===
-                    'source'
-                ) {
-                    openSource();
-                }
-
-                if (
-                    action ===
-                    'filter'
-                ) {
-                    openFilter();
-                }
-
-                if (
-                    action ===
-                    'episodes'
-                ) {
-                    closeToEpisodes();
-                }
-
-                if (
-                    action ===
-                    'quality'
-                ) {
-                    openQuality();
-                }
-
-            }
-        );
-
-        header.on(
-            'hover:focus',
-            '.wtch-tv-status__item',
-            function () {
-
-                $(this).addClass(
-                    'focus'
-                );
-
-            }
-        );
-
-        header.on(
-            'hover:focusout',
-            '.wtch-tv-status__item',
-            function () {
-
-                $(this).removeClass(
-                    'focus'
-                );
-
-            }
-        );
-
-        // -----------------------------------------------------
-        // Вставляем внутрь scroll body,
-        // чтобы Lampa Controller увидел selector.
-        // -----------------------------------------------------
-
-        var target =
-            $select
-                .find(
-                    '.scroll__body'
-                )
-                .first();
-
-        if (!target.length) {
-
-            target =
-                $select.find(
-                    '.selectbox-items,' +
-                    '.selectbox__items,' +
-                    '.selectbox__content'
-                )
-                    .first();
-
+        if ($filterTitle.length !== 1 || $filterTitle.text() !== Lampa.Lang.translate('title_filter')) {
+          return;
         }
 
-        if (
-            target.length
-        ) {
+        var $sourceBtn = $('.simple-button--filter.filter--sort');
 
-            target.prepend(
-                header
-            );
-
-        } else {
-
-            $select
-                .find(
-                    '.selectbox__title'
-                )
-                .after(
-                    header
-                );
-
+        if ($sourceBtn.length !== 1 || $sourceBtn.hasClass('hide')) {
+          return;
         }
 
-        // -----------------------------------------------------
-        // Повторно собираем focus-коллекцию
-        // -----------------------------------------------------
+        // Не дублируем пункт, если toggle сработал повторно на том же меню.
+        if ($('.selectbox-item[data-wtch-source-shortcut]').length) return;
 
-        safe(function () {
-
-            if (
-                Lampa.Controller &&
-                Lampa.Controller.collectionSet &&
-                target.length
-            ) {
-
-                Lampa.Controller.collectionSet(
-                    target[0]
-                );
-
-            }
-
+        var $selectBoxItem = Lampa.Template.get('selectbox_item', {
+          title: Lampa.Lang.translate('settings_rest_source'),
+          subtitle: $('div', $sourceBtn).text()
         });
 
-    }
+        $selectBoxItem.attr('data-wtch-source-shortcut', '1');
 
-    // =========================================================
-    // Кнопка возврата к сериям
-    // =========================================================
-
-    function addBackButton(
-        $select
-    ) {
-
-        if (
-            $select.find(
-                '.wtch-tv-back'
-            ).length
-        ) {
-            return;
-        }
-
-        var back = $(`
-
-            <div
-                class="wtch-tv-back selector"
-            >
-
-                <span
-                    class="wtch-tv-back__icon"
-                >
-                    ‹
-                </span>
-
-                <span>
-
-                    <b>
-                        Вернуться к сериям
-                    </b>
-
-                    <small>
-                        Закрыть меню выбора
-                    </small>
-
-                </span>
-
-            </div>
-
-        `);
-
-        back.on(
-            'hover:enter',
-            closeToEpisodes
-        );
-
-        back.on(
-            'hover:focus',
-            function () {
-                back.addClass(
-                    'focus'
-                );
-            }
-        );
-
-        back.on(
-            'hover:focusout',
-            function () {
-                back.removeClass(
-                    'focus'
-                );
-            }
-        );
-
-        var target =
-            $select
-                .find(
-                    '.scroll__body'
-                )
-                .first();
-
-        if (!target.length) {
-
-            target =
-                $select.find(
-                    '.selectbox-items,' +
-                    '.selectbox__items,' +
-                    '.selectbox__content'
-                )
-                    .first();
-
-        }
-
-        if (
-            target.length
-        ) {
-            target.prepend(
-                back
-            );
-        }
-
-        safe(function () {
-
-            if (
-                Lampa.Controller &&
-                Lampa.Controller.collectionSet &&
-                target.length
-            ) {
-
-                Lampa.Controller.collectionSet(
-                    target[0]
-                );
-
-            }
-
+        $selectBoxItem.on('hover:enter', function () {
+          $sourceBtn.trigger('hover:enter');
         });
 
-    }
+        $('.selectbox-item').first().after($selectBoxItem);
+        Lampa.Controller.collectionSet($('body > .selectbox').find('.scroll__body'));
+      });
+    });
+  }
 
-    // =========================================================
-    // Запоминаем качество
-    // =========================================================
+  // =========================================================
+  // 4.8. Панель быстрого доступа: Источник → Сезон → Озвучка → Качество
+  // =========================================================
+  //
+  // Следующий уровень: отдельная строка крупных "капсул" сверху экрана
+  // поиска озвучек, как в Z01 — по одной на Источник, Сезон, Озвучку и
+  // Качество. Каждая капсула сразу открывает нужный шаг, без блуждания
+  // по вложенным меню:
+  //  - "Источник"  — нажимает родную кнопку filter--sort (список
+  //                  источников/балансеров);
+  //  - "Сезон"     — открывает меню фильтра и сразу проваливается в
+  //                  группу "Сезон", без промежуточного экрана;
+  //  - "Озвучка"   — то же самое для группы "Перевод";
+  //  - "Качество"  — отдельный шаг: у wtch нет отдельного экрана выбора
+  //                  качества (плеер сам берёт лучшее доступное и
+  //                  умеет переключать его уже во время просмотра —
+  //                  кнопка качества в плеере уже оформлена п. 4.5).
+  //                  Капсула "Качество" задаёт предпочитаемое качество
+  //                  через тот же параметр, что читает сам скрипт
+  //                  (video_quality_default) — выбор реально запомнится
+  //                  и будет использован при следующей загрузке серии.
+  //
+  // Выбор источника/сезона/озвучки запоминает сам скрипт wtch (по
+  // фильму и источнику) — здесь это не дублируется.
+  //
+  // Технически модуль не трогает внутренности wtch (они не экспортированы
+  // наружу) — он просто нажимает те же самые кнопки, что нажали бы вы
+  // сами, через стандартный DOM/Controller API Lampa. Если разработчик
+  // wtch когда-нибудь переименует кнопки, модуль тихо перестанет
+  // добавлять панель, ничего не сломав.
 
-    function rememberQualityFromPicker(
-        $select
-    ) {
+  function installSourceQuickBar() {
+    if (window.lampa_wtch_quickbar_installed) return;
+    window.lampa_wtch_quickbar_installed = true;
 
-        $select
-            .find(
-                '.selectbox-item'
-            )
-            .off(
-                'wtch-quality-memory'
-            )
-            .on(
-                'hover:enter.wtch-quality-memory',
-                function () {
+    safe(function () {
+      if (
+        !window.Lampa ||
+        !window.Lampa.Activity ||
+        !window.Lampa.Platform ||
+        typeof window.$ === 'undefined' ||
+        !window.MutationObserver
+      ) {
+        return;
+      }
 
-                    var value =
-                        qualityOf(
-                            $(this).text()
-                        );
+      if (Lampa.Platform.screen('mobile')) return;
 
-                    if (value) {
+      var ICONS = {
+        source: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 7h13M17 7l-3-3M17 7l-3 3" stroke-linecap="round" stroke-linejoin="round"/><path d="M20 17H7M7 17l3 3M7 17l3-3" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+        season: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4" stroke-linecap="round"/></svg>',
+        voice: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0014 0M12 18v3" stroke-linecap="round"/></svg>',
+        quality: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 6h10M17 6h3M4 12h4M11 12h9M4 18h13" stroke-linecap="round"/><circle cx="14" cy="6" r="2" fill="currentColor" stroke="none"/><circle cx="8" cy="12" r="2" fill="currentColor" stroke="none"/><circle cx="16" cy="18" r="2" fill="currentColor" stroke="none"/></svg>'
+      };
 
-                        remember({
-                            quality:
-                                value
-                        });
+      function activeRoot() {
+        return safe(function () {
+          return Lampa.Activity.active().activity.render();
+        }) || $(document);
+      }
 
-                    }
+      // Кнопки самого wtch: только filter--sort (источник) и filter--search
+      // названы явно в его коде, третья ("фильтр": сезон+озвучка) — это
+      // единственная оставшаяся кнопка того же класса.
+      function findFilterButtons(root) {
+        var $bar = $(root).find('.torrent-filter');
+        if (!$bar.length) return null;
 
-                }
-            );
+        var $sort = $bar.find('.filter--sort');
+        var $search = $bar.find('.filter--search');
+        var $group = $bar.find('.simple-button--filter').not($sort).not($search).first();
 
-    }
+        if (!$sort.length && !$group.length) return null;
 
-    // =========================================================
-    // Обработка SelectBox
-    // =========================================================
+        return { bar: $bar, sort: $sort, group: $group };
+      }
 
-    function decoratePicker(
-        $select
-    ) {
-
-        if (
-            !$select ||
-            !$select.length
-        ) {
-            return;
+      function openFilterGroup(translateKey) {
+        var btns = findFilterButtons(activeRoot());
+        if (!btns || !btns.group.length) {
+          safe(function () {
+            Lampa.Noty.show(Lampa.Lang.translate('lampac_balanser_dont_work') || 'Недоступно для этого источника');
+          });
+          return;
         }
 
-        var mode =
-            pickerMode(
-                $select
-            );
-
-        $select.addClass(
-            'wtch-tv-select'
-        );
-
-        if (
-            mode !==
-            'unknown'
-        ) {
-
-            $select.addClass(
-                'wtch-tv-select--' +
-                mode
-            );
-
-        }
-
-        // Главный фильтр
-        if (
-            mode ===
-            'filter'
-        ) {
-
-            addHeader(
-                $select
-            );
-
-            addBackButton(
-                $select
-            );
-
-        }
-
-        decorateItems(
-            $select,
-            mode
-        );
-
-        if (
-            mode ===
-            'quality'
-        ) {
-
-            rememberQualityFromPicker(
-                $select
-            );
-
-        }
-
-    }
-
-    // =========================================================
-    // Сканирование открытого selectbox
-    // =========================================================
-
-    function scan() {
-
-        setTimeout(
-            function () {
-
-                var box =
-                    $(
-                        '.selectbox:visible'
-                    )
-                        .last();
-
-                if (
-                    box.length
-                ) {
-
-                    decoratePicker(
-                        box
-                    );
-
-                }
-
-            },
-            25
-        );
-
-    }
-
-    // =========================================================
-    // Следим за качеством в плеере
-    // =========================================================
-
-    function qualityMemoryHooks() {
-
-        safe(function () {
-
-            if (
-                !window.MutationObserver
-            ) {
-                return;
-            }
-
-            new MutationObserver(
-                function () {
-
-                    var q =
-                        qualityOf(
-                            $(
-                                '.player-panel__quality:visible'
-                            )
-                                .first()
-                                .text()
-                        );
-
-                    if (q) {
-
-                        remember({
-                            quality:
-                                q
-                        });
-
-                    }
-
-                }
-            ).observe(
-                document.body,
-                {
-                    childList:
-                        true,
-
-                    subtree:
-                        true,
-
-                    characterData:
-                        true
-                }
-            );
-
-        });
-
-    }
-
-    // =========================================================
-    // Установка Source Center
-    // =========================================================
-
-    function installSourceCenter() {
-
-        injectPickerCSS();
-
-        // -----------------------------------------------------
-        // Lampa Controller
-        // -----------------------------------------------------
-
-        safe(function () {
-
-            if (
-                Lampa.Controller &&
-                Lampa.Controller.listener
-            ) {
-
-                Lampa.Controller.listener.follow(
-                    'toggle',
-                    function (event) {
-
-                        if (
-                            event &&
-                            event.name ===
-                            'select'
-                        ) {
-
-                            scan();
-
-                        }
-
-                    }
-                );
-
-            }
-
-        });
-
-        // -----------------------------------------------------
-        // MutationObserver
-        // -----------------------------------------------------
-
-        safe(function () {
-
-            if (
-                window.MutationObserver
-            ) {
-
-                var observer =
-                    new MutationObserver(
-                        function (mutations) {
-
-                            for (
-                                var i = 0;
-                                i < mutations.length;
-                                i++
-                            ) {
-
-                                if (
-                                    mutations[i]
-                                        .addedNodes &&
-                                    mutations[i]
-                                        .addedNodes.length
-                                ) {
-
-                                    scan();
-
-                                    break;
-
-                                }
-
-                            }
-
-                        }
-                    );
-
-                observer.observe(
-                    document.body,
-                    {
-                        childList:
-                            true,
-
-                        subtree:
-                            true
-                    }
-                );
-
-            }
-
-        });
-
-        qualityMemoryHooks();
-
-        scan();
-
-        setTimeout(
-            scan,
-            250
-        );
-
-        setTimeout(
-            scan,
-            800
-        );
-
-        setTimeout(
-            scan,
-            1600
-        );
-
-    }
-
-    // =========================================================
-    // Загружаем настоящий WTCH
-    // =========================================================
-
-    function loadWTCH() {
-
-        if (
-            window.lampa_wtch_tv_loaded
-        ) {
-            return;
-        }
-
-        window.lampa_wtch_tv_loaded =
-            true;
-
-        // ВАЖНО:
-        //
-        // http://wtch.ch/m
-        //
-        // это уже JS-скрипт.
-        //
-        // Никаких:
-        // /online.js
-        // /m/online.js
-        // сюда не добавляем.
-
-        if (
-            window.Lampa &&
-            Lampa.Utils &&
-            typeof Lampa.Utils.putScriptAsync ===
-                'function'
-        ) {
+        btns.group.trigger('hover:enter');
+
+        setTimeout(function () {
+          var wanted = Lampa.Lang.translate(translateKey);
+          var $target = $('.selectbox-item').filter(function () {
+            return $(this).text().indexOf(wanted) !== -1;
+          }).first();
+
+          if ($target.length) $target.trigger('hover:enter');
+        }, 40);
+      }
+
+      function openSource() {
+        var btns = findFilterButtons(activeRoot());
+        if (btns && btns.sort.length) btns.sort.trigger('hover:enter');
+      }
+
+      function openSeason() {
+        openFilterGroup('torrent_serial_season');
+      }
+
+      function openVoice() {
+        openFilterGroup('torrent_parser_voice');
+      }
+
+      function openQuality() {
+        var current = String(safe(function () {
+          return Lampa.Storage.field('video_quality_default');
+        }) || '');
+
+        var options = [
+          { title: '4K / 2160p', value: '2160' },
+          { title: '1080p', value: '1080' },
+          { title: '720p', value: '720' },
+          { title: '480p', value: '480' },
+          { title: Lampa.Lang.translate('settings_video_quality_auto') || 'Авто', value: '' }
+        ];
+
+        Lampa.Select.show({
+          title: Lampa.Lang.translate('settings_video_quality') || Lampa.Lang.translate('torrent_serial_quality') || 'Качество',
+          items: options.map(function (option) {
+            return {
+              title: option.title,
+              value: option.value,
+              selected: current === option.value
+            };
+          }),
+          onSelect: function (item) {
+            Lampa.Select.close();
 
             safe(function () {
-
-                Lampa.Utils.putScriptAsync(
-                    [
-                        SCRIPT_URL
-                    ],
-                    function () {
-
-                        window.lampa_wtch_tv_ready =
-                            true;
-
-                    }
-                );
-
+              Lampa.Storage.set('video_quality_default', item.value);
             });
 
-            return;
-        }
+            safe(function () {
+              Lampa.Noty.show((Lampa.Lang.translate('settings_video_quality') || 'Качество') + ': ' + item.title);
+            });
+          },
+          onBack: function () {
+            Lampa.Controller.toggle('content');
+          }
+        });
+      }
 
-        // -----------------------------------------------------
-        // fallback
-        // -----------------------------------------------------
-
-        var script =
-            document.createElement(
-                'script'
-            );
-
-        script.async =
-            true;
-
-        script.src =
-            SCRIPT_URL;
-
-        script.onload =
-            function () {
-
-                window.lampa_wtch_tv_ready =
-                    true;
-
-            };
-
-        (
-            document.head ||
-            document.documentElement
-        )
-            .appendChild(
-                script
-            );
-
-    }
-
-    // =========================================================
-    // Запуск
-    // =========================================================
-
-    function start() {
-
-        hideUnwantedCSS();
-
-        cleanUI(
-            document
+      function buildItem(kind, label, action) {
+        var $item = $(
+          '<div class="wtch-quickbar__item selector">' +
+            '<span class="wtch-quickbar__icon">' + ICONS[kind] + '</span>' +
+            '<span class="wtch-quickbar__label"></span>' +
+          '</div>'
         );
 
-        guardShowy();
+        $item.find('.wtch-quickbar__label').text(label);
+        $item.on('hover:enter', action);
 
-        playerSkin();
+        return $item;
+      }
 
-        installSourceCenter();
+      function buildBar($bar) {
+        if ($bar.parent().find('.wtch-quickbar').length) return;
 
-        safe(function () {
+        var $wrap = $('<div class="wtch-quickbar"></div>');
 
-            if (
-                window.Lampa &&
-                Lampa.Listener
-            ) {
+        $wrap.append(buildItem('source', Lampa.Lang.translate('settings_rest_source') || 'Источник', openSource));
+        $wrap.append(buildItem('season', Lampa.Lang.translate('torrent_serial_season') || 'Сезон', openSeason));
+        $wrap.append(buildItem('voice', Lampa.Lang.translate('torrent_parser_voice') || 'Озвучка', openVoice));
+        $wrap.append(buildItem('quality', Lampa.Lang.translate('settings_video_quality') || 'Качество', openQuality));
 
-                Lampa.Listener.follow(
-                    'full',
-                    function (e) {
+        $bar.after($wrap);
+      }
 
-                        if (
-                            e.type ===
-                                'complite' ||
-                            e.type ===
-                                'complete'
-                        ) {
+      var observer = new MutationObserver(function () {
+        if (!isSourceComponentActive()) return;
 
-                            setTimeout(
-                                function () {
+        var root = activeRoot();
+        var btns = findFilterButtons(root);
 
-                                    cleanUI(
-                                        document
-                                    );
+        if (!btns) return;
 
-                                },
-                                80
-                            );
+        buildBar(btns.bar);
+      });
 
-                            scan();
-
-                        }
-
-                    }
-                );
-
-            }
-
+      safe(function () {
+        observer.observe(document.documentElement, {
+          childList: true,
+          subtree: true
         });
+      });
+    });
+  }
 
-    }
 
-    // =========================================================
-    // Запускаем guard и WTCH
-    // =========================================================
+  // =========================================================
+  // 5. Загружаем WTCH
+  // =========================================================
 
-    guardShowy();
+  function loadWTCH() {
+    if (window.lampa_wtch_unified_loaded) return;
 
-    loadWTCH();
+    window.lampa_wtch_unified_loaded = true;
 
-    // =========================================================
-    // Ждём Lampa
-    // =========================================================
+    // ВАЖНО:
+    // http://wtch.ch/m — это уже сам JS.
+    // Не добавляем /online.js
+    // Не добавляем /m/online.js
+    var scripts = [
+      SCRIPT_URL
+    ];
 
+    // Предпочтительный способ для Lampa
     if (
-        window.appready
+      window.Lampa &&
+      window.Lampa.Utils &&
+      typeof window.Lampa.Utils.putScriptAsync === 'function'
     ) {
+      var result = safe(function () {
 
-        start();
+        Lampa.Utils.putScriptAsync(
+          scripts,
+          function () {
+            window.lampa_wtch_unified_ready = true;
+          }
+        );
 
-    } else {
+        return true;
+      });
 
-        safe(function () {
-
-            if (
-                Lampa &&
-                Lampa.Listener
-            ) {
-
-                Lampa.Listener.follow(
-                    'app',
-                    function (event) {
-
-                        if (
-                            event.type ===
-                            'ready'
-                        ) {
-
-                            start();
-
-                        }
-
-                    }
-                );
-
-            }
-
-        });
-
+      if (result) return;
     }
 
-    // =========================================================
-    // Информация о плагине
-    // =========================================================
+    // Резервная загрузка обычным <script>
+    var index = 0;
 
-    window.lampa_wtch_unified = {
+    function next() {
 
-        version:
-            VERSION,
+      if (index >= scripts.length) {
+        window.lampa_wtch_unified_ready = true;
+        return;
+      }
 
-        script:
-            SCRIPT_URL,
+      var script = document.createElement('script');
 
-        trailers:
-            false,
+      script.async = true;
+      script.src = scripts[index++];
 
-        shots:
-            false,
+      script.onload = next;
+      script.onerror = next;
 
-        torrents:
-            false,
+      (
+        document.head ||
+        document.documentElement
+      ).appendChild(script);
+    }
 
-        player_skin:
-            true,
+    next();
+  }
 
-        source_center:
-            true
+  // =========================================================
+  // 6. Запуск плагина
+  // =========================================================
 
-    };
+  installShowyProGuards();
+  loadWTCH();
+
+  function start() {
+
+    injectCSS();
+
+    installUiCleaner();
+
+    disableTorrentSetting();
+
+    installPlayerSkin();
+
+    installSourceSkin();
+
+    installSourceFilterShortcut();
+
+    installSourceQuickBar();
+  }
+
+  // =========================================================
+  // 7. Ждём загрузки Lampa
+  // =========================================================
+
+  if (window.appready) {
+
+    start();
+
+  } else {
+
+    safe(function () {
+
+      if (
+        window.Lampa &&
+        window.Lampa.Listener
+      ) {
+
+        Lampa.Listener.follow(
+          'app',
+          function (event) {
+
+            if (event.type === 'ready') {
+              start();
+            }
+
+          }
+        );
+
+      }
+
+    });
+
+  }
+
+  // =========================================================
+  // 8. Информация о плагине
+  // =========================================================
+
+  window.lampa_wtch_unified = {
+
+    version: VERSION,
+
+    script: SCRIPT_URL,
+
+    trailers: false,
+
+    shots: false,
+
+    torrents: false,
+
+    player_skin: true,
+
+    source_ui_skin: true,
+
+    source_filter_shortcut: true,
+
+    source_quickbar: true
+
+  };
 
 })();
