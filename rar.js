@@ -50,7 +50,7 @@
 
         // Обновляем по тем же правилам
         if (!email || !expiresDate || Date.now() > expiresDate.getTime()) {
-            email = "user_" + Math.random().toString(36).slice(2, 11) + "@gmail.com"
+            email = Math.random().toString(36).slice(2, 11) + "@gmail.com"
             lsSet(KEYS.email, email);
         }
 
@@ -129,8 +129,14 @@
                 lsSet(KEYS.uid, uid);
                 lsSet(KEYS.expires, data.expires_at || '');
                 lsSet(KEYS.key, data.zpremkey);
-                notify('Подписка активна до ' + (data.expires_at || '—'));
+
+                notify('Подписка активна до ' + (data.expires_at || '—') + '. Перезагрузка через 5 секунд...');
                 warnIfExpiring();
+
+                // Перезагрузка страницы через 5000 миллисекунд (5 секунд)
+                setTimeout(function() {
+                    window.location.reload();
+                }, 5000);
             } else {
                 // Любой другой статус (лимит, ошибка, истёк) — просто сообщаем, ничего не перезаписываем
                 notify('Сервер ответил: ' + (data.status || data.message || 'неизвестный статус'));
