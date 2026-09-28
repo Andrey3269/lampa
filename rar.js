@@ -31,19 +31,29 @@
 
     // Динамический uid: каждый раз создаём новый и сразу сохраняем в локальное хранилище
     function getUid() {
+        var uid = ls(KEYS.uid);
+        var expiresDate = parseExpires(ls(KEYS.expires)); // Получаем записанное время
 
-        var uid = Math.random().toString(36).slice(2, 11) + Date.now().toString(36).slice(-4);
-        lsSet(KEYS.uid, uid);
+        // Обновляем, если uid нет, даты нет или текущее время больше записанного
+        if (!uid || !expiresDate || Date.now() > expiresDate.getTime()) {
+            uid = Math.random().toString(36).slice(2, 11) + Date.now().toString(36).slice(-4);
+            lsSet(KEYS.uid, uid);
+        }
 
         return uid;
     }
 
     // Каждый раз генерируем случайный email, сохраняем и возвращаем
     function getEmail() {
-        var randomStr = Math.random().toString(36).slice(2, 11);
-        var email = "user_" + randomStr + "@gmail.com";
+        var email = ls(KEYS.email);
+        var expiresDate = parseExpires(ls(KEYS.expires));
 
-        lsSet(KEYS.email, email);
+        // Обновляем по тем же правилам
+        if (!email || !expiresDate || Date.now() > expiresDate.getTime()) {
+            email = "user_" + Math.random().toString(36).slice(2, 11) + "@gmail.com"
+            lsSet(KEYS.email, email);
+        }
+
         return email;
     }
 
