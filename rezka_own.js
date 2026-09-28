@@ -744,20 +744,20 @@
 
     Lampa.SettingsApi.addParam({
       component: 'rezka_own',
-      param: { name: 'rz_host', type: 'input', 'default': DEFAULT_HOST, placeholder: DEFAULT_HOST },
+      param: { name: 'rz_host', type: 'input', values: '', 'default': DEFAULT_HOST, placeholder: DEFAULT_HOST },
       field: { name: 'Адрес сайта (зеркало)', description: 'Например https://rezka.ag — если домен сменился, укажите рабочее зеркало' }
     });
 
     Lampa.SettingsApi.addParam({
       component: 'rezka_own',
-      param: { name: 'rz_login', type: 'input', 'default': '', placeholder: 'логин или e-mail' },
+      param: { name: 'rz_login', type: 'input', values: '', 'default': '', placeholder: 'логин или e-mail' },
       field: { name: 'Логин', description: 'Логин от вашего аккаунта Rezka' },
       onChange: function () { logged = false; }
     });
 
     Lampa.SettingsApi.addParam({
       component: 'rezka_own',
-      param: { name: 'rz_password', type: 'input', 'default': '', placeholder: 'пароль' },
+      param: { name: 'rz_password', type: 'input', values: '', 'default': '', placeholder: 'пароль' },
       field: { name: 'Пароль', description: 'Пароль от вашего аккаунта Rezka' },
       onChange: function () { logged = false; }
     });
@@ -779,13 +779,13 @@
 
     Lampa.SettingsApi.addParam({
       component: 'rezka_own',
-      param: { name: 'rz_cookie', type: 'input', 'default': '', placeholder: 'dle_user_id=...; dle_password=...' },
+      param: { name: 'rz_cookie', type: 'input', values: '', 'default': '', placeholder: 'dle_user_id=...; dle_password=...' },
       field: { name: 'Cookie (необязательно)', description: 'Заполняется автоматически после входа. Можно вставить вручную dle_user_id и dle_password из браузера' }
     });
 
     Lampa.SettingsApi.addParam({
       component: 'rezka_own',
-      param: { name: 'rz_proxy', type: 'input', 'default': '', placeholder: 'https://my.proxy/?u={url}' },
+      param: { name: 'rz_proxy', type: 'input', values: '', 'default': '', placeholder: 'https://my.proxy/?u={url}' },
       field: { name: 'Прокси (необязательно)', description: 'Шаблон адреса прокси, {url} будет заменён на адрес запроса. Нужен, если сайт блокирует запросы из Lampa (CORS)' }
     });
   }
