@@ -8,6 +8,8 @@
         warnHours: 48,
         // Таймаут запроса, мс
         timeout: 15000
+        // Сервер опережает моё время на N часов
+        serverOffsetHours: 3
     };
 
     var KEYS = {
@@ -61,7 +63,9 @@
     function parseExpires(str) {
         if (!str) return null;
         var d = new Date(String(str).replace(' ', 'T'));
-        return isNaN(d.getTime()) ? null : d;
+        if (isNaN(d.getTime())) return null;
+        // Серверное время опережает моё, поэтому реальный момент окончания позже на offset
+        return new Date(d.getTime() + CONFIG.serverOffsetHours * 3600 * 1000);
     }
 
     function isActive() {
