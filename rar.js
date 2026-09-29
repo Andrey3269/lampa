@@ -5,7 +5,7 @@
     var CONFIG = {
         api: 'https://oplata.z01.online/trial.php',
         // За сколько часов до конца показывать предупреждение
-        warnHours: 24,
+        warnHours: 48,
         // Таймаут запроса, мс
         timeout: 15000
     };
