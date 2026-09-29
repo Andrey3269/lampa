@@ -5,11 +5,9 @@
     var CONFIG = {
         api: 'https://oplata.z01.online/trial.php',
         // За сколько часов до конца показывать предупреждение
-        warnHours: 48,
+        warnHours: 24,
         // Таймаут запроса, мс
         timeout: 15000
-        // Сервер опережает моё время на N часов
-        serverOffsetHours: 3
     };
 
     var KEYS = {
@@ -63,9 +61,7 @@
     function parseExpires(str) {
         if (!str) return null;
         var d = new Date(String(str).replace(' ', 'T'));
-        if (isNaN(d.getTime())) return null;
-        // Серверное время опережает моё, поэтому реальный момент окончания позже на offset
-        return new Date(d.getTime() + CONFIG.serverOffsetHours * 3600 * 1000);
+        return isNaN(d.getTime()) ? null : d;
     }
 
     function isActive() {
@@ -118,7 +114,6 @@
 
         // Подписка ещё действует — лишний запрос не нужен
         if (isActive()) {
-            warnIfExpiring();
             return;
         }
 
@@ -135,7 +130,6 @@
                 lsSet(KEYS.key, data.zpremkey);
 
                 notify('Подписка активна до ' + (data.expires_at || '—') + '. Перезагрузка через 5 секунд...');
-                warnIfExpiring();
 
                 // Перезагрузка страницы через 5000 миллисекунд (5 секунд)
                 setTimeout(function() {
