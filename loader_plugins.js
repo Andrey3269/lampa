@@ -7,7 +7,7 @@
     // ===== Список плагинов =====
     var PLUGINS = [
         { name: 'Обход подписки',    url: 'https://andrey3269.github.io/lampa/free_podpiska.js' },
-        { name: 'Редирект',  url: 'https://andrey3269.github.io/lampa/domen.js' },
+        { name: 'Редирект lampa.run',  url: 'https://andrey3269.github.io/lampa/redirect_domen.js' },
         { name: 'ЛГБТ+',   url: 'https://andrey3269.github.io/lampa/lgbt.js' },
         { name: 'IPTV',     url: 'https://andrey3269.github.io/lampa/iptv.js' },
         { name: 'Фильмы', url: 'https://andrey3269.github.io/lampa/films_player.js' }
