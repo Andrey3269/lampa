@@ -6,11 +6,11 @@
 
     // ===== Список плагинов =====
     var PLUGINS = [
-        { name: 'rar',    url: 'https://andrey3269.github.io/lampa/rar.js' },
-        { name: 'domen',  url: 'https://andrey3269.github.io/lampa/domen.js' },
-        { name: 'lgbt',   url: 'https://andrey3269.github.io/lampa/lgbt.js' },
-        { name: 'tv',     url: 'https://andrey3269.github.io/lampa/tv.js' },
-        { name: 'player', url: 'https://andrey3269.github.io/lampa/player.js' }
+        { name: 'Free подписка',    url: 'https://andrey3269.github.io/lampa/rar.js' },
+        { name: 'Редирект',  url: 'https://andrey3269.github.io/lampa/domen.js' },
+        { name: 'ЛГБТ+',   url: 'https://andrey3269.github.io/lampa/lgbt.js1' },
+        { name: 'IPTV',     url: 'https://andrey3269.github.io/lampa/tv.js' },
+        { name: 'Фильмы', url: 'https://andrey3269.github.io/lampa/player.js' }
     ];
 
     var TIMEOUT = 10000;
