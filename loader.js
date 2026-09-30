@@ -19,11 +19,9 @@
 
     // ===== SVG-иконки (24×24, линейные, цвет берут из currentColor) =====
     var PATHS = {
-        cube:  '<path d="M12 3 4 7.5v9l8 4.5 8-4.5v-9L12 3Z"/><path d="m4 7.5 8 4.5 8-4.5M12 12v9"/>',
-        power: '<path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><path d="M12 2v10"/>',
-        retry: '<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/>' +
-               '<path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>',
-        close: '<path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/>'
+        js: '<rect x="3" y="3" width="18" height="18" rx="4.5"/>' +
+            '<text x="12" y="15.6" text-anchor="middle" font-size="9.4" font-weight="700" letter-spacing="-.3" ' +
+            'font-family="inherit" fill="currentColor" stroke="none">JS</text>'
     };
 
     function svg(name, cls) {
@@ -158,11 +156,11 @@
     }
 
     var CHIP = {
-        ok:      { text: 'Подключён' },
-        fail:    { text: 'Ошибка загрузки' },
-        loading: { text: 'Загрузка…' },
-        off:     { text: 'Отключён' },
-        pending: { text: 'Отключится после перезагрузки' }
+        ok:      '',
+        fail:    'Ошибка загрузки',
+        loading: 'Загрузка…',
+        off:     'Отключён',
+        pending: 'Отключится после перезагрузки'
     };
 
     function subtitle(state) {
@@ -196,67 +194,66 @@
         '.plugins-badge[data-state="part"],.plugins-badge[data-state="loading"]{--pb:#fbbf24;--pb-f:#b45309}',
         '.plugins-badge[data-state="fail"]{--pb:#f87171;--pb-f:#dc2626}',
 
-        // --- плашка в шапке
-        '.plugins-badge{display:inline-flex;align-items:center;flex-shrink:0;margin:0 .4em;padding:.4em .8em;' +
-            'border-radius:1em;background:none;color:inherit;font-size:1em;line-height:1;white-space:nowrap;cursor:pointer;' +
+        // --- плашка в шапке: размер как у штатных круглых кнопок (иконка ~2.2em, высота ~4em)
+        '.plugins-badge{display:inline-flex;align-items:center;flex-shrink:0;margin:0 .4em;padding:.75em 1.1em;' +
+            'border-radius:2em;background:none;color:inherit;font-size:1.15em;line-height:1;white-space:nowrap;cursor:pointer;' +
             'transition:background .2s,color .2s}',
-        '.plugins-badge .pb-ico{display:inline-flex;width:1.25em;height:1.25em;margin-right:.5em;color:var(--pb);transition:color .3s}',
+        '.plugins-badge .pb-ico{display:inline-flex;width:1.9em;height:1.9em;margin-right:.55em;color:var(--pb);transition:color .3s}',
         '.plugins-badge .pb-ico .pb-i{width:100%;height:100%}',
         '.plugins-badge[data-state="loading"] .pb-ico{animation:pb-blink 1s infinite}',
-        '.plugins-badge__label{opacity:.7;margin-right:.45em}',
+        '.plugins-badge__label{opacity:.7;margin-right:.5em}',
         '.pb__count{opacity:.95;font-variant-numeric:tabular-nums}',
         '.plugins-badge.focus,.plugins-badge:hover{background:#fff;color:#000}',
         '.plugins-badge.focus .plugins-badge__label,.plugins-badge:hover .plugins-badge__label{opacity:.8}',
         '.plugins-badge.focus .pb-ico,.plugins-badge:hover .pb-ico{color:var(--pb-f)}',
-        '@media (max-width:700px){.plugins-badge__label{display:none}}',
+        '@media (max-width:700px){.plugins-badge__label{display:none}.plugins-badge{padding:.75em .9em}.plugins-badge .pb-ico{margin-right:.4em}}',
 
-        // --- панель: как штатные «Настройки» Lampa — плоская, на всю высоту справа, без затемнения
+        // --- панель: как штатные «Настройки» Lampa
         '.pb-overlay{position:fixed;left:0;top:0;right:0;bottom:0;z-index:2000;opacity:0;pointer-events:none;' +
             'transition:opacity .2s ease;color:#fff;font-family:inherit;-webkit-tap-highlight-color:transparent}',
         '.pb-overlay.pb-in{opacity:1;pointer-events:auto}',
         '.pb-backdrop{position:absolute;left:0;top:0;right:0;bottom:0;background:transparent}',
+        // .85em — тот же масштаб, что у штатной панели настроек
         '.pb-sheet{position:absolute;top:0;right:0;bottom:0;width:35em;max-width:100%;display:flex;flex-direction:column;' +
-            'box-sizing:border-box;overflow:hidden;background:#262626;' +
+            'box-sizing:border-box;overflow:hidden;background:#262626;font-size:.85em;' +
             'padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);' +
             'transform:translate3d(100%,0,0);transition:transform .2s ease}',
         '.pb-overlay.pb-in .pb-sheet{transform:none}',
-        '@media (max-width:700px){.pb-sheet{width:100%;font-size:clamp(13px,1em,18px)}}',
+        // телефон: слева остаётся полоска — тап по ней закрывает панель
+        '@media (max-width:700px){.pb-sheet{width:88%;font-size:clamp(13px,.9em,18px)}' +
+            '.pb-head,.pb-row,.pb-act{padding-left:1.5em!important;padding-right:1.5em!important}}',
 
-        // --- шапка: крупный тонкий заголовок, как «Настройки»
+        // --- шапка
         '.pb-i{display:block;flex-shrink:0}',
-        '.pb-head{display:flex;align-items:center;flex-shrink:0;padding:1.4em 1.5em .8em}',
+        '.pb-head{display:flex;align-items:flex-end;flex-shrink:0;padding:1.5em 2em .9em 2.4em}',
         '.pb-head__text{flex:1 1 auto;min-width:0}',
         '.pb-head__title{font-size:2.4em;font-weight:300;line-height:1.15}',
         '.pb-head__sub{margin-top:.5em;font-size:1em;line-height:1.25;opacity:.5}',
-        '.pb-head__count{flex-shrink:0;margin:0 .6em;font-size:1.2em;opacity:.5;font-variant-numeric:tabular-nums}',
-        '.pb-close{display:flex;align-items:center;justify-content:center;flex-shrink:0;width:2.6em;height:2.6em;border-radius:50%;cursor:pointer}',
-        '.pb-close .pb-i{width:1.3em;height:1.3em}',
+        '.pb-head__count{flex-shrink:0;margin-left:1em;font-size:1.4em;line-height:1.2;opacity:.5;font-variant-numeric:tabular-nums}',
 
-        // --- список: строки на всю ширину, серый фокус
+        // --- список: точка + название, серый фокус на всю ширину
         '.pb-list{flex:1 1 auto;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;' +
-            'padding:.5em 0;scroll-behavior:smooth}',
+            'padding:.6em 0;scroll-behavior:smooth}',
         '.pb-list::-webkit-scrollbar{display:none}',
-        '.pb-row,.pb-act{display:flex;align-items:center;padding:1em 1.5em;cursor:pointer;background:none}',
+        '.pb-row,.pb-act{display:flex;align-items:flex-start;padding:1em 2em 1em 2.4em;cursor:pointer;background:none}',
         '.pb-row{--c:#7d7d7d}',
         '.pb-row[data-st="ok"]{--c:#4bbc16}',
         '.pb-row[data-st="loading"],.pb-row[data-st="pending"]{--c:#f5b400}',
         '.pb-row[data-st="fail"]{--c:#e04848}',
-        '.pb-row__ico,.pb-act .pb-i{width:2.2em;height:2.2em;margin-right:1em}',
-        '.pb-row__ico{display:flex;align-items:center;justify-content:center;transition:opacity .2s}',
-        '.pb-row__ico .pb-i{width:100%;height:100%}',
-        '.pb-row__body{flex:1 1 auto;min-width:0;transition:opacity .2s}',
-        '.pb-row__name{font-size:1.4em;line-height:1.2}',
-        '.pb-chip{display:flex;align-items:center;margin-top:.35em;font-size:1em;line-height:1.25;color:rgba(255,255,255,.75)}',
-        '.pb-dot{flex-shrink:0;width:.6em;height:.6em;margin-right:.55em;border-radius:50%;background:var(--c)}',
+        // точка стоит по центру первой строки (высота строки 1.4em × 1.2 = 1.68em)
+        '.pb-dot{flex-shrink:0;width:.7em;height:.7em;margin:.49em .9em 0 0;border-radius:50%;background:var(--c);transition:background .3s}',
         '.pb-row[data-st="loading"] .pb-dot{animation:pb-blink 1s infinite}',
+        '.pb-row__body{flex:1 1 auto;min-width:0;transition:opacity .2s}',
+        '.pb-row:not(.is-on) .pb-row__body{opacity:.5}',
+        '.pb-row__line{display:flex;align-items:baseline;font-size:1.4em;line-height:1.2}',
+        '.pb-row__name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+        '.pb-row__state{flex-shrink:0;margin-left:auto;padding-left:.8em;font-size:.65em;opacity:.55;white-space:nowrap}',
         '.pb-row__url{margin-top:.3em;font-size:.85em;line-height:1.2;opacity:.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
-        '.pb-row:not(.is-on) .pb-row__ico,.pb-row:not(.is-on) .pb-row__body{opacity:.45}',
-        '.pb-row.focus,.pb-act.focus,.pb-close.focus{background:rgba(255,255,255,.1)}',
+        '.pb-row.focus,.pb-act.focus{background:rgba(255,255,255,.1)}',
 
-        // --- нижние действия — обычные строки
-        '.pb-foot{flex-shrink:0;padding:0 0 .5em}',
-        '.pb-act{font-size:1.4em;line-height:1.2}',
-        '.pb-act .pb-i{width:1.57em;height:1.57em;margin-right:.71em}',
+        // --- нижние действия — простые строки, как «Выполнить вход»
+        '.pb-foot{flex-shrink:0;padding:.2em 0 .8em}',
+        '.pb-act{align-items:center;font-size:1.4em;line-height:1.2;padding-top:.7em;padding-bottom:.7em}',
         '.pb-act.is-hot{color:#f5b400}',
         '.pb-hide{display:none!important}',
 
@@ -297,13 +294,14 @@
     function buildRow(p) {
         var row = $(
             '<div class="pb-row selector" role="switch" data-index="' + p.index + '">' +
-                '<div class="pb-row__ico">' + svg('cube') + '</div>' +
+                '<span class="pb-dot"></span>' +
                 '<div class="pb-row__body">' +
-                    '<div class="pb-row__name"></div>' +
-                    '<div class="pb-chip"></div>' +
+                    '<div class="pb-row__line">' +
+                        '<span class="pb-row__name"></span>' +
+                        '<span class="pb-row__state"></span>' +
+                    '</div>' +
                     '<div class="pb-row__url"></div>' +
                 '</div>' +
-                '<div class="pb-switch"></div>' +
             '</div>'
         );
 
@@ -332,12 +330,11 @@
                             '<div class="pb-head__sub"></div>' +
                         '</div>' +
                         '<div class="pb-head__count"></div>' +
-                        '<div class="pb-close selector">' + svg('close') + '</div>' +
                     '</div>' +
                     '<div class="pb-list"></div>' +
                     '<div class="pb-foot">' +
-                        '<div class="pb-act pb-act--retry pb-hide">' + svg('retry') + '<span>Повторить</span></div>' +
-                        '<div class="pb-act pb-act--reload selector">' + svg('power') + '<span>Перезагрузить</span></div>' +
+                        '<div class="pb-act pb-act--retry pb-hide">Повторить</div>' +
+                        '<div class="pb-act pb-act--reload selector">Перезагрузить</div>' +
                     '</div>' +
                 '</div>' +
             '</div>'
@@ -347,11 +344,10 @@
         PLUGINS.forEach(function (p) { list.append(buildRow(p)); });
 
         html.find('.pb-backdrop').on('click', closePanel);
-        onPress(html.find('.pb-close'), closePanel);
         onPress(html.find('.pb-act--retry'), function () { loadAll(true); });
         onPress(html.find('.pb-act--reload'), function () { window.location.reload(); });
 
-        html.find('.pb-close, .pb-act').on('hover:focus', function () { panel_last = this; });
+        html.find('.pb-act').on('hover:focus', function () { panel_last = this; });
 
         return html;
     }
@@ -368,9 +364,8 @@
             var st = rowState(p);
 
             if (row.attr('data-st') !== st) {
-                var c = CHIP[st];
                 row.attr('data-st', st);
-                row.find('.pb-chip').html('<span class="pb-dot"></span><span>' + c.text + '</span>');
+                row.find('.pb-row__state').text(CHIP[st]);
             }
 
             row.toggleClass('is-on', p.enabled);
@@ -459,7 +454,7 @@
 
         badge = $(
             '<div class="plugins-badge selector" data-state="loading">' +
-            '<span class="pb-ico">' + svg('cube') + '</span>' +
+            '<span class="pb-ico">' + svg('js') + '</span>' +
             '<span class="plugins-badge__label">Плагины</span>' +
             '<span class="pb__count">0/' + PLUGINS.length + '</span>' +
             '</div>'
