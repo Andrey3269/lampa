@@ -14,18 +14,29 @@
     ];
 
     var TIMEOUT = 10000;
-    var STORAGE_KEY = 'plugins_badge_off';
+    var STORAGE_KEY = 'plugins_badge_off'; // имена отключённых плагинов
+    var CTRL = 'plugins_badge_panel';      // имя контроллера панели
 
-    // ===== SVG Иконки (Clean Tech) =====
-    var ICONS = {
-        ok: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>',
-        fail: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>',
-        warn: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg>',
-        off: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/></svg>',
-        retry: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>',
-        reload: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.5A9.5 9.5 0 0 0 2.5 12a9.5 9.5 0 0 0 9.5 9.5 9.5 9.5 0 0 0 9.5-9.5H19.4a7.4 7.4 0 1 1-2.17-5.24L14.5 9.5h7V2.5l-2.37 2.37A9.46 9.46 0 0 0 12 2.5z"/></svg>'
+    // ===== SVG-иконки (24×24, линейные, цвет берут из currentColor) =====
+    var PATHS = {
+        cube:  '<path d="M12 3 4 7.5v9l8 4.5 8-4.5v-9L12 3Z"/><path d="m4 7.5 8 4.5 8-4.5M12 12v9"/>',
+        ok:    '<circle cx="12" cy="12" r="9.2"/><path d="m8.2 12.4 2.6 2.6 5-5.4"/>',
+        fail:  '<circle cx="12" cy="12" r="9.2"/><path d="M12 7.6v5.2M12 16.4h.01"/>',
+        load:  '<circle cx="12" cy="12" r="9.2" opacity=".22"/><path d="M21.2 12A9.2 9.2 0 0 0 12 2.8"/>',
+        off:   '<circle cx="12" cy="12" r="9.2" stroke-dasharray="3.4 3.02"/><path d="M8.6 12h6.8"/>',
+        power: '<path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><path d="M12 2v10"/>',
+        retry: '<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/>' +
+               '<path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>',
+        close: '<path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/>'
     };
 
+    function svg(name, cls) {
+        return '<svg class="pb-i' + (cls ? ' ' + cls : '') + '" viewBox="0 0 24 24" fill="none" ' +
+               'stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" ' +
+               'aria-hidden="true" focusable="false">' + PATHS[name] + '</svg>';
+    }
+
+    // ===== Хранилище отключённых =====
     function readOff() {
         try {
             var v = Lampa.Storage.get(STORAGE_KEY, '[]');
@@ -40,6 +51,7 @@
         try { Lampa.Storage.set(STORAGE_KEY, off); } catch (e) {}
     }
 
+    // статусы: wait | loading | ok | fail
     var off_list = readOff();
     PLUGINS.forEach(function (p, i) {
         p.index = i;
@@ -48,7 +60,14 @@
         p.enabled = off_list.indexOf(p.name) === -1;
     });
 
+    // ===== Загрузка =====
     function loadOne(p, done) {
+        // уже работает, грузится или выключен — пропускаем
+        if (!p.enabled || p.loaded || p.status === 'loading') {
+            if (done) done();
+            return;
+        }
+
         p.status = 'loading';
         render();
 
@@ -83,10 +102,15 @@
             return only_failed ? p.status === 'fail' : p.status === 'wait';
         });
 
+        // при повторе сразу показываем всю очередь как «загрузка»
+        if (only_failed) {
+            queue.forEach(function (p) { p.status = 'wait'; p.retry = true; });
+            render();
+        }
+
         (function next() {
             var p = queue.shift();
             if (!p) return;
-            if (only_failed) p.retry = true;
             loadOne(p, next);
         })();
     }
@@ -96,17 +120,16 @@
         p.enabled = on;
         saveOff();
 
-        if (on) {
-            if (!p.loaded && p.status !== 'loading') {
-                p.retry = p.status === 'fail';
-                loadOne(p);
-            }
-        } else if (p.loaded) {
-            Lampa.Noty.show('«' + p.name + '» отключится после перезагрузки');
+        // если скрипт уже работал в этой сессии — просто возвращаем в счётчик
+        if (on && !p.loaded && p.status !== 'loading') {
+            p.retry = p.status === 'fail';
+            loadOne(p);
+            return;
         }
         render();
     }
 
+    // ===== Статистика (считаем только включённые) =====
     function stats() {
         var s = { ok: 0, fail: 0, busy: 0, total: 0 };
         PLUGINS.forEach(function (p) {
@@ -119,138 +142,380 @@
         return s;
     }
 
+    function stateOf(s) {
+        if (s.total === 0) return 'off';
+        if (s.busy > 0) return 'loading';
+        if (s.fail === 0) return 'ok';
+        return s.ok === 0 ? 'fail' : 'part';
+    }
+
+    // есть выключенные плагины, которые ещё работают до перезагрузки
+    function needsReload() {
+        return PLUGINS.some(function (p) { return !p.enabled && p.loaded; });
+    }
+
+    function rowState(p) {
+        if (!p.enabled) return p.loaded ? 'pending' : 'off';
+        if (p.status === 'ok') return 'ok';
+        if (p.status === 'fail') return 'fail';
+        return 'loading';
+    }
+
+    var CHIP = {
+        ok:      { icon: 'ok',    text: 'Подключён' },
+        fail:    { icon: 'fail',  text: 'Ошибка загрузки' },
+        loading: { icon: 'load',  text: 'Загрузка…' },
+        off:     { icon: 'off',   text: 'Отключён' },
+        pending: { icon: 'power', text: 'Отключится после перезагрузки' }
+    };
+
+    function subtitle(state) {
+        if (state === 'loading') return 'Загрузка…';
+        if (state === 'fail') return 'Не удалось загрузить плагины';
+        if (state === 'part') return 'Часть плагинов не загрузилась';
+        if (needsReload()) return 'Изменения вступят в силу после перезагрузки';
+        if (state === 'off') return 'Все плагины отключены';
+        return 'Все плагины подключены';
+    }
+
+    // ===== Плашка в шапке =====
     var badge;
 
     function render() {
-        if (!badge) return;
         var s = stats();
-        var state;
+        var state = stateOf(s);
 
-        if (s.total === 0) state = 'off';
-        else if (s.busy > 0) state = 'loading';
-        else if (s.fail === 0) state = 'ok';
-        else state = s.ok === 0 ? 'fail' : 'part';
-
-        badge.attr('data-state', state);
-        badge.find('.pb__count').text(s.ok + '/' + s.total);
-
-        var dot = badge.find('.plugins-badge__dot');
-        if (state === 'ok') dot.html(ICONS.ok);
-        else if (state === 'fail') dot.html(ICONS.fail);
-        else if (state === 'off') dot.html(ICONS.off);
-        else dot.html(ICONS.warn);
+        if (badge) {
+            badge.attr('data-state', state);
+            badge.find('.pb__count').text(s.ok + '/' + s.total);
+        }
+        if (panel) updatePanel(s, state);
     }
+
+    // ===== Стили =====
+    var CSS = [
+        // --- цвета состояний (общие для плашки и счётчика в панели)
+        '.plugins-badge,.pb-pill{--pb:#8b8f98;--pb-f:#6b7280}',
+        '.plugins-badge[data-state="ok"],.pb-pill[data-state="ok"]{--pb:#34d399;--pb-f:#0b8a5a}',
+        '.plugins-badge[data-state="part"],.pb-pill[data-state="part"]{--pb:#fbbf24;--pb-f:#b45309}',
+        '.plugins-badge[data-state="loading"],.pb-pill[data-state="loading"]{--pb:#fbbf24;--pb-f:#b45309}',
+        '.plugins-badge[data-state="fail"],.pb-pill[data-state="fail"]{--pb:#f87171;--pb-f:#dc2626}',
+
+        // --- плашка в шапке
+        '.plugins-badge{display:inline-flex;align-items:center;flex-shrink:0;margin:0 .4em;padding:.4em .8em;' +
+            'border-radius:1em;background:none;color:inherit;font-size:1em;line-height:1;white-space:nowrap;cursor:pointer;' +
+            'transition:background .2s,color .2s}',
+        '.plugins-badge .pb-ico{display:inline-flex;width:1.25em;height:1.25em;margin-right:.5em;color:var(--pb);transition:color .3s}',
+        '.plugins-badge .pb-ico .pb-i{width:100%;height:100%}',
+        '.plugins-badge[data-state="loading"] .pb-ico{animation:pb-blink 1s infinite}',
+        '.plugins-badge__label{opacity:.7;margin-right:.45em}',
+        '.pb__count{opacity:.95;font-variant-numeric:tabular-nums}',
+        '.plugins-badge.focus,.plugins-badge:hover{background:#fff;color:#000}',
+        '.plugins-badge.focus .plugins-badge__label,.plugins-badge:hover .plugins-badge__label{opacity:.8}',
+        '.plugins-badge.focus .pb-ico,.plugins-badge:hover .pb-ico{color:var(--pb-f)}',
+        '@media (max-width:700px){.plugins-badge__label{display:none}}',
+
+        // --- панель: затемнение
+        '.pb-overlay{position:fixed;left:0;top:0;right:0;bottom:0;z-index:2000;opacity:0;pointer-events:none;' +
+            'transition:opacity .22s ease;color:#fff;font-family:inherit;-webkit-tap-highlight-color:transparent}',
+        '.pb-overlay.pb-in{opacity:1;pointer-events:auto}',
+        '.pb-backdrop{position:absolute;left:0;top:0;right:0;bottom:0;background:rgba(0,0,0,.6)}',
+
+        // --- панель: плавающая карточка со скруглениями (телефон: снизу, с отступом от чёлки и углов экрана)
+        '.pb-sheet{position:absolute;left:.6em;right:.6em;bottom:.6em;max-height:calc(100% - 3.6em);' +
+            'display:flex;flex-direction:column;box-sizing:border-box;overflow:hidden;border-radius:1.7em;' +
+            'background:rgba(27,28,32,.97);box-shadow:0 1.2em 3.2em rgba(0,0,0,.6),0 0 0 1px rgba(255,255,255,.07);' +
+            'transform:translateY(1.6em);transition:transform .3s cubic-bezier(.2,.85,.25,1)}',
+        '.pb-overlay.pb-in .pb-sheet{transform:none}',
+        '@supports ((-webkit-backdrop-filter:blur(1px)) or (backdrop-filter:blur(1px))){' +
+            '.pb-sheet{background:rgba(27,28,32,.8);-webkit-backdrop-filter:blur(26px) saturate(1.6);backdrop-filter:blur(26px) saturate(1.6)}}',
+        // safe-area: чёлка iPhone, закруглённые углы экрана, полоска «домой»
+        '@supports (bottom:max(1px,env(safe-area-inset-bottom))){' +
+            '.pb-sheet{left:max(.6em,env(safe-area-inset-left));right:max(.6em,env(safe-area-inset-right));' +
+            'bottom:max(.6em,env(safe-area-inset-bottom));' +
+            'max-height:calc(100% - max(1em,env(safe-area-inset-top)) - max(.6em,env(safe-area-inset-bottom)) - .6em)}}',
+        '@media (max-width:700px){.pb-sheet{font-size:clamp(13px,1em,18px)}}',
+        // широкий экран / ТВ / альбомная ориентация: панель справа
+        '@media (min-width:701px){.pb-sheet{left:auto;top:.8em;right:.8em;bottom:.8em;width:30em;max-width:92%;' +
+            'max-height:none;transform:translateX(2.4em)}}',
+        '@supports (bottom:max(1px,env(safe-area-inset-bottom))){@media (min-width:701px){' +
+            '.pb-sheet{left:auto;top:max(.8em,env(safe-area-inset-top));right:max(.8em,env(safe-area-inset-right));' +
+            'bottom:max(.8em,env(safe-area-inset-bottom));max-height:none}}}',
+
+        // --- панель: шапка
+        '.pb-i{display:block;flex-shrink:0}',
+        '.pb-head{display:flex;align-items:center;flex-shrink:0;padding:1.1em 1em 1em 1.2em;border-bottom:1px solid rgba(255,255,255,.07)}',
+        '.pb-head__ico{display:flex;align-items:center;justify-content:center;flex-shrink:0;width:2.7em;height:2.7em;' +
+            'margin-right:.9em;border-radius:.9em;background:rgba(255,255,255,.09)}',
+        '.pb-head__ico .pb-i{width:1.5em;height:1.5em}',
+        '.pb-head__text{flex:1 1 auto;min-width:0}',
+        '.pb-head__title{font-size:1.35em;font-weight:600;line-height:1.15;letter-spacing:-.01em}',
+        '.pb-head__sub{margin-top:.3em;font-size:.8em;line-height:1.25;opacity:.6}',
+        '.pb-pill{display:flex;align-items:center;flex-shrink:0;margin:0 .7em;padding:.45em .8em;border-radius:2em;' +
+            'background:rgba(255,255,255,.09);font-size:.95em;font-weight:600;line-height:1;font-variant-numeric:tabular-nums}',
+        '.pb-pill__dot{width:.55em;height:.55em;margin-right:.55em;border-radius:50%;background:var(--pb);box-shadow:0 0 .6em var(--pb)}',
+        '.pb-close{display:flex;align-items:center;justify-content:center;flex-shrink:0;width:2.5em;height:2.5em;border-radius:50%;' +
+            'background:rgba(255,255,255,.09);cursor:pointer;transition:background .18s,color .18s}',
+        '.pb-close .pb-i{width:1.15em;height:1.15em}',
+        '.pb-close.focus{background:#fff;color:#111}',
+
+        // --- панель: список
+        '.pb-list{flex:1 1 auto;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;' +
+            'padding:.4em .8em .5em;scroll-behavior:smooth}',
+        '.pb-list::-webkit-scrollbar{display:none}',
+        '.pb-row{--c:#8b8f98;--c-f:#6b7280;display:flex;align-items:center;margin:.4em 0;padding:.8em .9em;border-radius:1.15em;' +
+            'background:rgba(255,255,255,.06);cursor:pointer;transition:background .18s,color .18s,box-shadow .18s}',
+        '.pb-row[data-st="ok"]{--c:#34d399;--c-f:#0b8a5a}',
+        '.pb-row[data-st="loading"],.pb-row[data-st="pending"]{--c:#fbbf24;--c-f:#b45309}',
+        '.pb-row[data-st="fail"]{--c:#f87171;--c-f:#dc2626}',
+        '.pb-row__tile{display:flex;align-items:center;justify-content:center;flex-shrink:0;width:2.7em;height:2.7em;' +
+            'margin-right:.9em;border-radius:.9em;background:rgba(255,255,255,.08);color:var(--c);transition:background .18s,color .18s}',
+        '.pb-row__tile .pb-i{width:1.45em;height:1.45em}',
+        '.pb-row__body{flex:1 1 auto;min-width:0}',
+        '.pb-row__name{font-size:1.08em;font-weight:600;line-height:1.2;transition:opacity .2s}',
+        '.pb-row:not(.is-on) .pb-row__name{opacity:.55}',
+        '.pb-chip{display:flex;align-items:center;margin-top:.3em;font-size:.8em;line-height:1.25;color:var(--c)}',
+        '.pb-chip .pb-i{width:1.15em;height:1.15em;margin-right:.45em}',
+        '.pb-row__url{margin-top:.3em;font-size:.72em;line-height:1.2;opacity:.5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+        '.pb-switch{position:relative;flex-shrink:0;width:2.9em;height:1.65em;margin-left:.8em;border-radius:1em;' +
+            'background:rgba(255,255,255,.2);transition:background .2s}',
+        '.pb-switch:after{content:"";position:absolute;left:.17em;top:.17em;width:1.31em;height:1.31em;border-radius:50%;' +
+            'background:#fff;box-shadow:0 .1em .3em rgba(0,0,0,.35);transition:transform .22s cubic-bezier(.3,.9,.3,1)}',
+        '.pb-row.is-on .pb-switch{background:#34d399}',
+        '.pb-row.is-on .pb-switch:after{transform:translateX(1.25em)}',
+        // фокус — белая подсветка, как у остальных элементов Lampa
+        '.pb-row.focus{background:#fff;color:#111;box-shadow:0 .4em 1.4em rgba(0,0,0,.35)}',
+        '.pb-row.focus .pb-row__tile{background:rgba(0,0,0,.07);color:var(--c-f)}',
+        '.pb-row.focus .pb-chip{color:var(--c-f)}',
+        '.pb-row.focus .pb-switch{background:rgba(0,0,0,.22)}',
+        '.pb-row.focus.is-on .pb-switch{background:#10b981}',
+
+        // --- панель: нижние кнопки
+        '.pb-foot{display:flex;flex-shrink:0;padding:.8em .7em;border-top:1px solid rgba(255,255,255,.07)}',
+        '.pb-act{display:flex;align-items:center;justify-content:center;flex:1 1 0;min-width:0;margin:0 .3em;padding:.85em .8em;' +
+            'border-radius:1.05em;background:rgba(255,255,255,.09);font-size:.95em;font-weight:600;line-height:1.2;text-align:center;' +
+            'cursor:pointer;transition:background .18s,color .18s}',
+        '.pb-act .pb-i{width:1.25em;height:1.25em;margin-right:.55em}',
+        '.pb-act.focus{background:#fff;color:#111}',
+        '.pb-act.is-hot{background:rgba(251,191,36,.18);color:#fbbf24}',
+        '.pb-act.is-hot.focus{background:#fbbf24;color:#1c1400}',
+        '.pb-hide{display:none!important}',
+
+        // --- анимации
+        '.pb-spin{animation:pb-rot .9s linear infinite}',
+        '@keyframes pb-rot{to{transform:rotate(360deg)}}',
+        '@keyframes pb-blink{50%{opacity:.35}}'
+    ];
 
     function addStyles() {
         if ($('#plugins-badge-style').length) return;
+        $('head').append('<style id="plugins-badge-style">' + CSS.join('') + '</style>');
+    }
 
-        $('head').append(
-            '<style id="plugins-badge-style">' +
-            /* Строгая центрированная обертка */
-            '.plugins-badge-wrap { position: absolute; top: 0; left: 50%; transform: translateX(-50%); z-index: 100; display: flex; }' +
+    // ===== Панель со списком плагинов =====
+    var panel = null;        // корневой элемент панели (пока открыта)
+    var panel_prev = null;   // контроллер, который был до открытия
+    var panel_last = null;   // последний элемент в фокусе
 
-            /* Чёлка (iPhone Notch): сплошной цвет, строгие формы, никаких градиентов/размытия */
-            '.plugins-badge { display: inline-flex; align-items: center; flex-shrink: 0; padding: 6px 20px; background: #1e1e20; color: #e2e8f0; font-size: 1em; line-height: 1; white-space: nowrap; cursor: pointer; border-radius: 0 0 16px 16px; position: relative; font-weight: 500; transition: background 0.3s; }' +
+    // защита от двойного срабатывания (hover:enter + click)
+    function onPress(el, fn) {
+        var last = 0;
+        el.on('hover:enter click', function (e) {
+            var now = Date.now();
+            if (now - last < 350) return;
+            last = now;
+            fn.call(this, e);
+        });
+    }
 
-            /* Инвертированные скругления по бокам */
-            '.plugins-badge::before, .plugins-badge::after { content: ""; position: absolute; top: 0; width: 12px; height: 12px; background: transparent; transition: box-shadow 0.3s; }' +
-            '.plugins-badge::before { left: -12px; border-top-right-radius: 12px; box-shadow: 6px -6px 0 6px #1e1e20; }' +
-            '.plugins-badge::after { right: -12px; border-top-left-radius: 12px; box-shadow: -6px -6px 0 6px #1e1e20; }' +
+    // прокрутка списка так, чтобы элемент в фокусе был виден целиком
+    function ensureVisible(list, el) {
+        var lr = list.getBoundingClientRect();
+        var er = el.getBoundingClientRect();
+        var pad = 10;
+        if (er.top < lr.top + pad) list.scrollTop -= (lr.top + pad - er.top);
+        else if (er.bottom > lr.bottom - pad) list.scrollTop += (er.bottom - (lr.bottom - pad));
+    }
 
-            /* Внутренние элементы */
-            '.plugins-badge__dot { display: flex; align-items: center; justify-content: center; width: 16px; height: 16px; margin-right: 8px; }' +
-            '.plugins-badge__dot svg { width: 100%; height: 100%; }' +
-            '.plugins-badge__label { opacity: 0.8; margin-right: 6px; }' +
-            '.pb__count { opacity: 1; font-weight: 600; }' +
-
-            /* Состояния - строгие сплошные цвета (никакого свечения) */
-            '.plugins-badge[data-state="ok"] .plugins-badge__dot { color: #3ddc84; }' +
-            '.plugins-badge[data-state="part"] .plugins-badge__dot { color: #ffb300; }' +
-            '.plugins-badge[data-state="fail"] .plugins-badge__dot { color: #ff5252; }' +
-            '.plugins-badge[data-state="loading"] .plugins-badge__dot { color: #ffb300; animation: pb-blink 1.2s infinite step-start; }' +
-            '.plugins-badge[data-state="off"] .plugins-badge__dot { color: #8a8a8a; }' +
-
-            '@keyframes pb-blink { 50% { opacity: 0.2; } }' +
-
-            /* Фокус */
-            '.plugins-badge.focus, .plugins-badge:hover { background: #2c2d30; color: #fff; }' +
-            '.plugins-badge.focus::before, .plugins-badge:hover::before { box-shadow: 6px -6px 0 6px #2c2d30; }' +
-            '.plugins-badge.focus::after, .plugins-badge:hover::after { box-shadow: -6px -6px 0 6px #2c2d30; }' +
-            '@media (max-width:700px) { .plugins-badge__label { display: none; } }' +
-
-            /* Иконки в меню Lampa */
-            '.selector .title-icon { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; margin-right: 10px; vertical-align: middle; }' +
-            '.selector .title-icon svg { width: 18px; height: 18px; }' +
-            '</style>'
+    function buildRow(p) {
+        var row = $(
+            '<div class="pb-row selector" role="switch" data-index="' + p.index + '">' +
+                '<div class="pb-row__tile">' + svg('cube') + '</div>' +
+                '<div class="pb-row__body">' +
+                    '<div class="pb-row__name"></div>' +
+                    '<div class="pb-chip"></div>' +
+                    '<div class="pb-row__url"></div>' +
+                '</div>' +
+                '<div class="pb-switch"></div>' +
+            '</div>'
         );
-    }
 
-    function statusText(p) {
-        if (!p.enabled) return p.loaded ? 'Отключится после перезагрузки' : 'Отключён';
-        if (p.status === 'ok') return 'Подключён';
-        if (p.status === 'fail') return 'Ошибка загрузки';
-        return 'Загрузка…';
-    }
+        row.find('.pb-row__name').text(p.name);
+        row.find('.pb-row__url').text(p.url.replace(/^https?:\/\//, ''));
 
-    function showList() {
-        var prev = Lampa.Controller.enabled().name;
-        var s = stats();
+        onPress(row, function () { setEnabled(p, !p.enabled); });
 
-        var items = PLUGINS.map(function (p) {
-            var svgIcon = p.enabled ? (p.status === 'ok' ? ICONS.ok : (p.status === 'fail' ? ICONS.fail : ICONS.warn)) : ICONS.off;
-            var color = p.enabled ? (p.status === 'ok' ? '#3ddc84' : (p.status === 'fail' ? '#ff5252' : '#ffb300')) : '#8a8a8a';
-
-            return {
-                title: '<span class="title-icon" style="color:' + color + '">' + svgIcon + '</span>' + p.name,
-                subtitle: statusText(p) + ' · ' + p.url,
-                checkbox: true,
-                checked: p.enabled,
-                index: p.index
-            };
+        row.on('hover:focus', function () {
+            panel_last = this;
+            var list = panel && panel.find('.pb-list')[0];
+            if (list) ensureVisible(list, this);
         });
 
-        if (s.fail > 0) items.push({ title: '<span class="title-icon" style="color:#e2e8f0">' + ICONS.retry + '</span>Повторить неудачные', action: 'retry' });
-        items.push({ title: '<span class="title-icon" style="color:#e2e8f0">' + ICONS.reload + '</span>Перезагрузить приложение', action: 'reload' });
+        return row;
+    }
 
-        Lampa.Select.show({
-            title: 'Плагины ' + s.ok + '/' + s.total,
-            items: items,
-            onCheck: function(item) {
-                var p = PLUGINS[item.index];
-                if (p) setEnabled(p, !!item.checked);
-            },
-            onSelect: function (item) {
-                if (item.action === 'reload') { window.location.reload(); return; }
-                Lampa.Controller.toggle(prev);
-                if (item.action === 'retry') loadAll(true);
-            },
-            onBack: function () {
-                Lampa.Controller.toggle(prev);
+    function buildPanel() {
+        var html = $(
+            '<div class="pb-overlay">' +
+                '<div class="pb-backdrop"></div>' +
+                '<div class="pb-sheet">' +
+                    '<div class="pb-head">' +
+                        '<div class="pb-head__ico">' + svg('cube') + '</div>' +
+                        '<div class="pb-head__text">' +
+                            '<div class="pb-head__title">Плагины</div>' +
+                            '<div class="pb-head__sub"></div>' +
+                        '</div>' +
+                        '<div class="pb-pill" data-state="loading">' +
+                            '<span class="pb-pill__dot"></span><span class="pb-pill__count"></span>' +
+                        '</div>' +
+                        '<div class="pb-close selector">' + svg('close') + '</div>' +
+                    '</div>' +
+                    '<div class="pb-list"></div>' +
+                    '<div class="pb-foot">' +
+                        '<div class="pb-act pb-act--retry pb-hide">' + svg('retry') + '<span>Повторить</span></div>' +
+                        '<div class="pb-act pb-act--reload selector">' + svg('power') + '<span>Перезагрузить</span></div>' +
+                    '</div>' +
+                '</div>' +
+            '</div>'
+        );
+
+        var list = html.find('.pb-list');
+        PLUGINS.forEach(function (p) { list.append(buildRow(p)); });
+
+        html.find('.pb-backdrop').on('click', closePanel);
+        onPress(html.find('.pb-close'), closePanel);
+        onPress(html.find('.pb-act--retry'), function () { loadAll(true); });
+        onPress(html.find('.pb-act--reload'), function () { window.location.reload(); });
+
+        html.find('.pb-close, .pb-act').on('hover:focus', function () { panel_last = this; });
+
+        return html;
+    }
+
+    // обновление панели «на лету» (статусы меняются, пока она открыта)
+    function updatePanel(s, state) {
+        if (!panel) return;
+
+        panel.find('.pb-pill').attr('data-state', state);
+        panel.find('.pb-pill__count').text(s.ok + '/' + s.total);
+        panel.find('.pb-head__sub').text(subtitle(state));
+
+        PLUGINS.forEach(function (p) {
+            var row = panel.find('.pb-row[data-index="' + p.index + '"]');
+            var st = rowState(p);
+
+            if (row.attr('data-st') !== st) {
+                var c = CHIP[st];
+                row.attr('data-st', st);
+                row.find('.pb-chip').html(svg(c.icon, st === 'loading' ? 'pb-spin' : '') + '<span>' + c.text + '</span>');
             }
+
+            row.toggleClass('is-on', p.enabled);
+            row.attr('aria-checked', p.enabled ? 'true' : 'false');
+        });
+
+        // кнопка «Повторить» появляется только при ошибках
+        var retry = panel.find('.pb-act--retry');
+        var had = retry.hasClass('selector');
+        var need = s.fail > 0;
+
+        retry.toggleClass('selector', need).toggleClass('pb-hide', !need);
+        panel.find('.pb-act--reload').toggleClass('is-hot', needsReload());
+
+        if (had !== need) refocus();
+    }
+
+    // пересобрать список кнопок для пульта и вернуть фокус
+    function refocus() {
+        if (!panel) return;
+        if (Lampa.Controller.enabled().name !== CTRL) return;
+
+        var el = panel_last;
+        if (!el || !el.offsetParent || !$(el).hasClass('selector')) {
+            el = panel.find('.pb-act--reload')[0];
+        }
+
+        Lampa.Controller.collectionSet(panel);
+        Lampa.Controller.collectionFocus(el || false, panel);
+    }
+
+    function openPanel() {
+        if (panel) return;
+
+        panel_prev = Lampa.Controller.enabled().name;
+        panel_last = null;
+        panel = buildPanel();
+
+        $('body').append(panel);
+        render();
+
+        // следующий кадр — запускаем анимацию появления
+        setTimeout(function () { if (panel) panel.addClass('pb-in'); }, 20);
+
+        Lampa.Controller.toggle(CTRL);
+    }
+
+    function closePanel() {
+        if (!panel) return;
+
+        var el = panel;
+        panel = null;
+        panel_last = null;
+
+        el.removeClass('pb-in');
+        Lampa.Controller.toggle(panel_prev || 'content');
+        setTimeout(function () { el.remove(); }, 300);
+    }
+
+    function registerController() {
+        Lampa.Controller.add(CTRL, {
+            toggle: function () {
+                if (!panel) return;
+                Lampa.Controller.collectionSet(panel);
+                Lampa.Controller.collectionFocus(panel_last || panel.find('.pb-row')[0] || false, panel);
+            },
+            up:    function () { Navigator.move('up'); },
+            down:  function () { Navigator.move('down'); },
+            left:  function () { Navigator.move('left'); },
+            right: function () { Navigator.move('right'); },
+            enter: function () {
+                var el = panel && panel.find('.selector.focus')[0];
+                if (el) $(el).trigger('hover:enter');
+            },
+            back: closePanel
         });
     }
 
+    // ===== Вставка плашки в шапку =====
     function insertBadge() {
         var title = $('.head__title').first();
         var actions = $('.head__actions').first();
 
         if (!title.length && !actions.length) return false;
-        if ($('.plugins-badge-wrap').length) return true;
+        if ($('.plugins-badge').length) return true;
 
-        var wrap = $('<div class="plugins-badge-wrap"></div>');
         badge = $(
             '<div class="plugins-badge selector" data-state="loading">' +
-            '<span class="plugins-badge__dot"></span>' +
+            '<span class="pb-ico">' + svg('cube') + '</span>' +
             '<span class="plugins-badge__label">Плагины</span>' +
             '<span class="pb__count">0/' + PLUGINS.length + '</span>' +
             '</div>'
         );
 
-        wrap.append(badge);
-        badge.on('hover:enter click', showList);
+        onPress(badge, openPanel);
 
-        if (title.length) title.after(wrap);
-        else actions.before(wrap);
+        if (title.length) title.after(badge);
+        else actions.before(badge);
 
         render();
         return true;
@@ -258,6 +523,7 @@
 
     function start() {
         addStyles();
+        registerController();
 
         var tries = 0;
         var t = setInterval(function () {
