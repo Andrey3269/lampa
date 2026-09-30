@@ -21,12 +21,14 @@
     var PATHS = {
         js: '<rect x="3" y="3" width="18" height="18" rx="4.5"/>' +
             '<text x="12" y="15.6" text-anchor="middle" font-size="9.4" font-weight="700" letter-spacing="-.3" ' +
-            'font-family="inherit" fill="currentColor" stroke="none">JS</text>'
+            'font-family="inherit" fill="currentColor" stroke="none">JS</text>',
+        reload: '<polyline points="23 4 23 10 17 10"/>' +
+                '<path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>'
     };
 
-    function svg(name, cls) {
+    function svg(name, cls, sw) {
         return '<svg class="pb-i' + (cls ? ' ' + cls : '') + '" viewBox="0 0 24 24" fill="none" ' +
-               'stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" ' +
+               'stroke="currentColor" stroke-width="' + (sw || 1.8) + '" stroke-linecap="round" stroke-linejoin="round" ' +
                'aria-hidden="true" focusable="false">' + PATHS[name] + '</svg>';
     }
 
@@ -160,20 +162,37 @@
         fail:    'Ошибка загрузки',
         loading: 'Загрузка…',
         off:     'Отключён',
-        pending: 'Отключится после перезагрузки'
+        pending: 'Отключён' // ещё работает до перезагрузки — пояснение теперь у кнопки «Перезагрузить»
     };
 
     function subtitle(state) {
         if (state === 'loading') return 'Загрузка…';
         if (state === 'fail') return 'Не удалось загрузить плагины';
         if (state === 'part') return 'Часть плагинов не загрузилась';
-        if (needsReload()) return 'Изменения вступят в силу после перезагрузки';
         if (state === 'off') return 'Все плагины отключены';
+        if (PLUGINS.some(function (p) { return !p.enabled; })) return 'Часть плагинов отключена';
         return 'Все плагины подключены';
     }
 
     // ===== Плашка в шапке =====
     var badge;
+
+    // подгоняем высоту плашки и размер иконки под штатные круглые кнопки шапки
+    function syncSize() {
+        if (!badge || !badge.length) return;
+
+        var ref = $('.head__actions .head__action').filter(function () {
+            return this.offsetHeight > 0;
+        }).first();
+        if (!ref.length) return;
+
+        var h = ref[0].offsetHeight;
+        var ico = ref.find('svg').first();
+        var w = ico.length ? ico[0].getBoundingClientRect().width : 0;
+
+        if (h) badge[0].style.setProperty('--pb-h', h + 'px');
+        if (w) badge[0].style.setProperty('--pb-ico', w + 'px');
+    }
 
     function render() {
         var s = stats();
@@ -182,6 +201,7 @@
         if (badge) {
             badge.attr('data-state', state);
             badge.find('.pb__count').text(s.ok + '/' + s.total);
+            syncSize();
         }
         if (panel) updatePanel(s, state);
     }
@@ -194,19 +214,23 @@
         '.plugins-badge[data-state="part"],.plugins-badge[data-state="loading"]{--pb:#fbbf24;--pb-f:#b45309}',
         '.plugins-badge[data-state="fail"]{--pb:#f87171;--pb-f:#dc2626}',
 
-        // --- плашка в шапке: размер как у штатных круглых кнопок (иконка ~2.2em, высота ~4em)
-        '.plugins-badge{display:inline-flex;align-items:center;flex-shrink:0;margin:0 .4em;padding:.75em 1.1em;' +
-            'border-radius:2em;background:none;color:inherit;font-size:1.15em;line-height:1;white-space:nowrap;cursor:pointer;' +
+        // --- плашка в шапке: высота и иконка берутся от штатных круглых кнопок (см. syncSize),
+        //     значения по умолчанию — на случай, если кнопки ещё не отрисованы
+        '.plugins-badge{--pb-p:calc((var(--pb-h,3em) - var(--pb-ico,1.5em)) / 2)}',
+        '.plugins-badge{display:inline-flex;align-items:center;flex-shrink:0;box-sizing:border-box;height:var(--pb-h,3em);' +
+            'margin:0 .4em;padding:0 calc(var(--pb-p) + .3em) 0 var(--pb-p);' +
+            'border-radius:2em;background:none;color:inherit;font-size:1em;line-height:1;white-space:nowrap;cursor:pointer;' +
             'transition:background .2s,color .2s}',
-        '.plugins-badge .pb-ico{display:inline-flex;width:1.9em;height:1.9em;margin-right:.55em;color:var(--pb);transition:color .3s}',
+        '.plugins-badge .pb-ico{display:inline-flex;width:var(--pb-ico,1.5em);height:var(--pb-ico,1.5em);margin-right:.5em;' +
+            'color:var(--pb);transition:color .3s}',
         '.plugins-badge .pb-ico .pb-i{width:100%;height:100%}',
         '.plugins-badge[data-state="loading"] .pb-ico{animation:pb-blink 1s infinite}',
-        '.plugins-badge__label{opacity:.7;margin-right:.5em}',
+        '.plugins-badge__label{opacity:.7;margin-right:.45em}',
         '.pb__count{opacity:.95;font-variant-numeric:tabular-nums}',
         '.plugins-badge.focus,.plugins-badge:hover{background:#fff;color:#000}',
         '.plugins-badge.focus .plugins-badge__label,.plugins-badge:hover .plugins-badge__label{opacity:.8}',
         '.plugins-badge.focus .pb-ico,.plugins-badge:hover .pb-ico{color:var(--pb-f)}',
-        '@media (max-width:700px){.plugins-badge__label{display:none}.plugins-badge{padding:.75em .9em}.plugins-badge .pb-ico{margin-right:.4em}}',
+        '@media (max-width:700px){.plugins-badge__label{display:none}.plugins-badge .pb-ico{margin-right:.4em}}',
 
         // --- панель: как штатные «Настройки» Lampa
         '.pb-overlay{position:fixed;left:0;top:0;right:0;bottom:0;z-index:2000;opacity:0;pointer-events:none;' +
@@ -215,17 +239,18 @@
         '.pb-backdrop{position:absolute;left:0;top:0;right:0;bottom:0;background:transparent}',
         // .85em — тот же масштаб, что у штатной панели настроек
         '.pb-sheet{position:absolute;top:0;right:0;bottom:0;width:35em;max-width:100%;display:flex;flex-direction:column;' +
-            'box-sizing:border-box;overflow:hidden;background:#262626;font-size:.85em;' +
+            'box-sizing:border-box;overflow:hidden;background:#262829;font-size:.85em;' +
             'padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);' +
             'transform:translate3d(100%,0,0);transition:transform .2s ease}',
         '.pb-overlay.pb-in .pb-sheet{transform:none}',
         // телефон: слева остаётся полоска — тап по ней закрывает панель
         '@media (max-width:700px){.pb-sheet{width:88%;font-size:clamp(13px,.9em,18px)}' +
-            '.pb-head,.pb-row,.pb-act{padding-left:1.5em!important;padding-right:1.5em!important}}',
+            '.pb-head,.pb-row{padding-left:1.5em!important;padding-right:1.5em!important}' +
+            '.pb-act{padding-left:1.07em!important;padding-right:1.07em!important}}',
 
         // --- шапка
         '.pb-i{display:block;flex-shrink:0}',
-        '.pb-head{display:flex;align-items:flex-end;flex-shrink:0;padding:1.5em 2em .9em 2.4em}',
+        '.pb-head{display:flex;align-items:flex-end;flex-shrink:0;padding:2.2em 2.4em 1.2em 2.4em}',
         '.pb-head__text{flex:1 1 auto;min-width:0}',
         '.pb-head__title{font-size:2.4em;font-weight:300;line-height:1.15}',
         '.pb-head__sub{margin-top:.5em;font-size:1em;line-height:1.25;opacity:.5}',
@@ -233,10 +258,10 @@
 
         // --- список: точка + название, серый фокус на всю ширину
         '.pb-list{flex:1 1 auto;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;' +
-            'padding:.6em 0;scroll-behavior:smooth}',
+            'padding:.8em 0;scroll-behavior:smooth}',
         '.pb-list::-webkit-scrollbar{display:none}',
-        '.pb-row,.pb-act{display:flex;align-items:flex-start;padding:1em 2em 1em 2.4em;cursor:pointer;background:none}',
-        '.pb-row{--c:#7d7d7d}',
+        '.pb-row,.pb-act{display:flex;align-items:flex-start;cursor:pointer;background:none}',
+        '.pb-row{padding:1.5em 2.4em;--c:#7d7d7d}',
         '.pb-row[data-st="ok"]{--c:#4bbc16}',
         '.pb-row[data-st="loading"],.pb-row[data-st="pending"]{--c:#f5b400}',
         '.pb-row[data-st="fail"]{--c:#e04848}',
@@ -249,12 +274,17 @@
         '.pb-row__name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
         '.pb-row__state{flex-shrink:0;margin-left:auto;padding-left:.8em;font-size:.65em;opacity:.55;white-space:nowrap}',
         '.pb-row__url{margin-top:.3em;font-size:.85em;line-height:1.2;opacity:.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
-        '.pb-row.focus,.pb-act.focus{background:rgba(255,255,255,.1)}',
+        '.pb-row.focus,.pb-act.focus{background:#353535}',
 
         // --- нижние действия — простые строки, как «Выполнить вход»
-        '.pb-foot{flex-shrink:0;padding:.2em 0 .8em}',
-        '.pb-act{align-items:center;font-size:1.4em;line-height:1.2;padding-top:.7em;padding-bottom:.7em}',
+        // (font-size 1.4em => отступы в em считаются от увеличенного шрифта: 1.71em ≈ 2.4em у строк списка)
+        '.pb-foot{flex-shrink:0;padding:.2em 0 1em}',
+        '.pb-act{align-items:center;font-size:1.4em;line-height:1.2;padding:.9em 1.71em}',
         '.pb-act.is-hot{color:#f5b400}',
+        // иконка занимает ту же колонку, что и точка у плагинов, текст выравнивается по названиям
+        '.pb-act .pb-i{width:.8em;height:.8em;margin-right:.35em}',
+        '.pb-act__body{flex:1 1 auto;min-width:0}',
+        '.pb-act__desc{margin-top:.3em;font-size:.7em;line-height:1.25;color:#fff;opacity:.5}',
         '.pb-hide{display:none!important}',
 
         // --- анимации
@@ -334,7 +364,13 @@
                     '<div class="pb-list"></div>' +
                     '<div class="pb-foot">' +
                         '<div class="pb-act pb-act--retry pb-hide">Повторить</div>' +
-                        '<div class="pb-act pb-act--reload selector">Перезагрузить</div>' +
+                        '<div class="pb-act pb-act--reload selector">' +
+                            svg('reload', '', 2) +
+                            '<div class="pb-act__body">' +
+                                '<div class="pb-act__title">Перезагрузить</div>' +
+                                '<div class="pb-act__desc pb-hide">Изменения вступят в силу после перезагрузки</div>' +
+                            '</div>' +
+                        '</div>' +
                     '</div>' +
                 '</div>' +
             '</div>'
@@ -378,7 +414,10 @@
         var need = s.fail > 0;
 
         retry.toggleClass('selector', need).toggleClass('pb-hide', !need);
-        panel.find('.pb-act--reload').toggleClass('is-hot', needsReload());
+        // если есть отключённые, но ещё работающие плагины — подсвечиваем кнопку и показываем описание под ней
+        var hot = needsReload();
+        panel.find('.pb-act--reload').toggleClass('is-hot', hot);
+        panel.find('.pb-act__desc').toggleClass('pb-hide', !hot);
 
         if (had !== need) refocus();
     }
@@ -466,6 +505,11 @@
         else actions.before(badge);
 
         render();
+
+        // шапка может дорисоваться позже — пересчитываем размер ещё несколько раз и при ресайзе
+        [300, 1200, 3000].forEach(function (ms) { setTimeout(syncSize, ms); });
+        $(window).on('resize', syncSize);
+
         return true;
     }
 
