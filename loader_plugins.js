@@ -4,17 +4,6 @@
     if (window.plugins_badge_ready) return;
     window.plugins_badge_ready = true;
 
-    // ===== Манифест: название и описание плагина =====
-    try {
-        Lampa.Manifest.plugins = {
-            type: 'other',
-            version: '1.0.0',
-            name: 'Плагины',
-            description: 'Загрузчик плагинов: панель в шапке, включение и отключение, статус загрузки и повтор при ошибке',
-            component: 'plugins_badge'
-        };
-    } catch (e) {}
-
     // ===== Список плагинов =====
     var PLUGINS = [
         { name: 'Обход подписки',    url: 'https://andrey3269.github.io/lampa/free_podpiska.js' },
