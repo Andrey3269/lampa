@@ -368,7 +368,7 @@
                             svg('reload', '', 2) +
                             '<div class="pb-act__body">' +
                                 '<div class="pb-act__title">Перезагрузить</div>' +
-                                '<div class="pb-act__desc pb-hide">Изменения вступят в силу после перезагрузки</div>' +
+                                '<div class="pb-act__desc">Изменения вступят в силу после перезагрузки</div>' +
                             '</div>' +
                         '</div>' +
                     '</div>' +
@@ -414,10 +414,9 @@
         var need = s.fail > 0;
 
         retry.toggleClass('selector', need).toggleClass('pb-hide', !need);
-        // если есть отключённые, но ещё работающие плагины — подсвечиваем кнопку и показываем описание под ней
+        // если есть отключённые, но ещё работающие плагины — подсвечиваем кнопку
         var hot = needsReload();
         panel.find('.pb-act--reload').toggleClass('is-hot', hot);
-        panel.find('.pb-act__desc').toggleClass('pb-hide', !hot);
 
         if (had !== need) refocus();
     }
