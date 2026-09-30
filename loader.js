@@ -23,7 +23,8 @@
             '<text x="12" y="15.6" text-anchor="middle" font-size="9.4" font-weight="700" letter-spacing="-.3" ' +
             'font-family="inherit" fill="currentColor" stroke="none">JS</text>',
         reload: '<polyline points="23 4 23 10 17 10"/>' +
-                '<path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>'
+                '<path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>',
+        error: '<path d="M12 8V12"/><path d="M12 16.0195V16"/><circle cx="12" cy="12" r="10"/>'
     };
 
     function svg(name, cls, sw) {
@@ -282,7 +283,8 @@
         '.pb-act{align-items:center;font-size:1.4em;line-height:1.2;padding:.9em 1.71em}',
         '.pb-act.is-hot{color:#f5b400}',
         // иконка занимает ту же колонку, что и точка у плагинов, текст выравнивается по названиям
-        '.pb-act .pb-i{width:.8em;height:.8em;margin-right:.35em}',
+        '.pb-act .pb-i{width:1.4em;height:1.4em;margin-right:.4em}',
+        '.pb-act--retry .pb-i{color:#e04848}',
         '.pb-act__body{flex:1 1 auto;min-width:0}',
         '.pb-act__desc{margin-top:.3em;font-size:.7em;line-height:1.25;color:#fff;opacity:.5}',
         '.pb-hide{display:none!important}',
@@ -363,7 +365,13 @@
                     '</div>' +
                     '<div class="pb-list"></div>' +
                     '<div class="pb-foot">' +
-                        '<div class="pb-act pb-act--retry pb-hide">Повторить</div>' +
+                        '<div class="pb-act pb-act--retry pb-hide">' +
+                            svg('error', '', 2) +
+                            '<div class="pb-act__body">' +
+                                '<div class="pb-act__title">Повторить</div>' +
+                                '<div class="pb-act__desc">Не все плагины смогли загрузиться</div>' +
+                            '</div>' +
+                        '</div>' +
                         '<div class="pb-act pb-act--reload selector">' +
                             svg('reload', '', 2) +
                             '<div class="pb-act__body">' +
