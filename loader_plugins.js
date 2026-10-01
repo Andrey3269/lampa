@@ -8,7 +8,7 @@
     var PLUGINS = [
         { name: 'Обход подписки',    url: 'https://andrey3269.github.io/lampa/free_podpiska.js' },
         { name: 'Редирект lampa.run',  url: 'https://andrey3269.github.io/lampa/redirect_domen.js' },
-        { name: 'ЛГБТ+',   url: 'https://andrey3269.github.io/lampa/lgbt.js' },
+        { name: 'ЛГБТ+',   url: 'https://andrey3269.github.io/lampa/see_lgbt.js' },
         { name: 'IPTV',     url: 'https://andrey3269.github.io/lampa/iptv.js' },
         { name: 'Фильмы', url: 'https://andrey3269.github.io/lampa/films_player.js' }
     ];
@@ -221,9 +221,9 @@
         '.plugins-badge{display:inline-flex;align-items:center;flex-shrink:0;box-sizing:border-box;height:var(--pb-h,3em);' +
             'margin:0 .4em;padding:0 calc(var(--pb-p) + .3em) 0 var(--pb-p);' +
             'border-radius:2em;background:none;color:inherit;font-size:1em;line-height:1;white-space:nowrap;cursor:pointer;' +
-            'transition:background .2s,color .2s}',
+            '}',
         '.plugins-badge .pb-ico{display:inline-flex;width:var(--pb-ico,1.5em);height:var(--pb-ico,1.5em);margin-right:.5em;' +
-            'color:var(--pb);transition:color .3s}',
+            'color:var(--pb);}',
         '.plugins-badge .pb-ico .pb-i{width:100%;height:100%}',
         '.plugins-badge[data-state="loading"] .pb-ico{animation:pb-blink 1s infinite}',
         '.plugins-badge__label{opacity:.7;margin-right:.45em}',
