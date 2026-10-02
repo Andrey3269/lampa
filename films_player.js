@@ -109,7 +109,7 @@
     if (window.lampa_z01_unified_loaded) return;
     window.lampa_z01_unified_loaded = true;
 
-    var scripts = [HOST + 'online.js'];
+    var scripts = [HOST + 'online.js', HOST + 'lampac-src-filter.js'];
 
     if (window.Lampa && window.Lampa.Utils && typeof window.Lampa.Utils.putScriptAsync === 'function') {
       var res = safe(function () {
@@ -158,6 +158,7 @@
   window.lampa_z01_unified = {
     version: VERSION,
     online: HOST + 'online.js',
+    sourceFilter: HOST + 'lampac-src-filter.js',
     trailers: false,
     shots: false,
     torrents: false
