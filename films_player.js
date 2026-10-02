@@ -6,7 +6,6 @@
 
   var VERSION = '1.1.1';
   var HOST = 'http://prem.z01.online/';
-  var HOST2 = 'https://cdn.jsdelivr.net/gh/andrey3269/lampa@main/';
 
   // Вспомогательная функция из вашего старого кода для безопасного выполнения
   function safe(fn) {
@@ -110,7 +109,7 @@
     if (window.lampa_z01_unified_loaded) return;
     window.lampa_z01_unified_loaded = true;
 
-    var scripts = [HOST + 'online.js', HOST2 + 'lampac-src-filter.js'];
+    var scripts = [HOST + 'online.js'];
 
     if (window.Lampa && window.Lampa.Utils && typeof window.Lampa.Utils.putScriptAsync === 'function') {
       var res = safe(function () {
@@ -159,7 +158,6 @@
   window.lampa_z01_unified = {
     version: VERSION,
     online: HOST + 'online.js',
-    sourceFilter: HOST2 + 'lampac-src-filter.js',
     trailers: false,
     shots: false,
     torrents: false
